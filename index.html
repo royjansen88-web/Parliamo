@@ -398,13 +398,24 @@ function reviewCandidates(){
  });
  return pool.sort((a,b)=>a.due-b.due||a.stage-b.stage);
 }
+let reviewDemo=false;
+function startReviewDemo(){
+ const n=Number(document.getElementById('reviewDemoLesson')?.value||0);
+ const lesson=lessons[n];
+ if(!lesson)return;
+ const words=shuffle(lesson.words.map(([it,nl],i)=>({key:lesson.id+':'+i,it,nl,li:n,type:'word'}))).slice(0,8);
+ const sentences=shuffle(sentenceExercises[n].map((v,i)=>({key:lesson.id+':sentence'+i,it:v.italian,nl:v.dutch,li:n,type:'sentence'}))).slice(0,2);
+ reviewDemo=true;reviewSession=shuffle([...words,...sentences]);reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
+}
 function startWeakReview(){
+ reviewDemo=false;
  const pool=reviewCandidates().filter(w=>{const rec=state.reviews[w.key];return rec&&rec.lastSeen&&(rec.stage<=2||rec.lastCorrect===false)});
  const sorted=pool.sort((a,b)=>{const x=state.reviews[a.key],y=state.reviews[b.key];return Number(x.lastCorrect)-Number(y.lastCorrect)||(x.stage||0)-(y.stage||0)||(x.due||0)-(y.due||0)});
  reviewSession=sorted.slice(0,12);
  reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function startReview(){
+ reviewDemo=false;
  const pool=reviewCandidates(),now=Date.now();
  const due=pool.filter(w=>w.due<=now);
  const priority=w=>{const r=state.reviews[w.key];return r&&r.lastSeen?((r.lastCorrect===false?100:0)+(5-(r.stage||0))*10):0};
@@ -429,8 +440,7 @@ function submitReview(){
  const prev=state.reviews[w.key]||{stage:0};
  const stage=reviewMistakes===0?Math.min((prev.stage||0)+1,5):0;
  const days=[1,2,4,7,14,30][stage];
- state.reviews[w.key]={stage,due:Date.now()+days*86400000,lastCorrect:reviewMistakes===0,lastSeen:new Date().toISOString()};
- save();reviewIndex++;reviewRevealed=false;reviewMistakes=0;renderReview();
+ if(!reviewDemo){state.reviews[w.key]={stage,due:Date.now()+days*86400000,lastCorrect:reviewMistakes===0,lastSeen:new Date().toISOString()};save();}reviewIndex++;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function renderReview(){
  const pool=reviewCandidates(),due=pool.filter(w=>w.due<=Date.now());
@@ -441,11 +451,11 @@ function renderReview(){
   return;
  }
  if(reviewSession.length&&reviewIndex>=reviewSession.length){
-  reviewSession=[];reviewIndex=0;
-  app.innerHTML=`<div class="card"><h2>Herhaalronde afgerond</h2><p>Goed gewerkt. De volgende herhaling wordt gepland op basis van je antwoorden.</p><button class="btn" onclick="renderReview()">Bekijk herhaalplanning</button></div>`;
+  const wasDemo=reviewDemo;reviewDemo=false;reviewSession=[];reviewIndex=0;
+  app.innerHTML=`<div class="card"><h2>${wasDemo?'Proefronde afgerond':'Herhaalronde afgerond'}</h2><p>${wasDemo?'Je hebt de herhaaltrainer getest. Je voortgang en herhaalplanning zijn niet gewijzigd.':'Goed gewerkt. De volgende herhaling wordt gepland op basis van je antwoorden.'}</p><button class="btn" onclick="renderReview()">Bekijk herhaalplanning</button></div>`;
   return;
  }
- app.innerHTML=`<div class="card"><div class="eyebrow">Gespreide herhaling</div><h2>Jouw dagelijkse herhaling</h2><p><strong>${due.length}</strong> woorden en zinnen klaar voor herhaling uit <strong>${state.passedIds.length}</strong> behaalde lessen.</p><p class="muted">De planner geeft voorrang aan eerder fout beantwoorde en nog niet goed beheerste woorden en zinnen.</p><p><button class="btn secondary" onclick="startWeakReview()" ${!reviewCandidates().some(w=>{const r=state.reviews[w.key];return r&&r.lastSeen&&(r.stage<=2||r.lastCorrect===false)})?'disabled':''}>Oefen mijn lastige woorden</button></p><p class="muted">Typ zelf de Italiaanse vertaling van het woord of de volledige zin. Een fout antwoord moet je verbeteren voordat je verder kunt. Alleen een goed antwoord bij de eerste poging telt als direct beheerst. Lastige woorden komen eerder terug. Per ronde maximaal 12 woorden.</p>${due.length?`<button class="btn" onclick="startReview()">Start herhaling (${Math.min(due.length,12)} opdrachten)</button>`:`<p>Geen woorden gepland. Rond eerst een les af of kom later terug.</p>`}</div>`;
+ app.innerHTML=`<div class="card"><div class="eyebrow">Gespreide herhaling</div><h2>Jouw dagelijkse herhaling</h2><div class="card" style="box-shadow:none;border-color:#cfe3d4"><h3>Probeer de herhaaltrainer</h3><p class="muted">Kies een willekeurige les, ook als deze nog niet is vrijgespeeld. Je maakt 10 oefeningen zonder gevolgen voor je voortgang.</p><select id="reviewDemoLesson" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${lessons.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><button class="btn secondary" onclick="startReviewDemo()">Start proefronde</button></div><p><strong>${due.length}</strong> woorden en zinnen klaar voor herhaling uit <strong>${state.passedIds.length}</strong> behaalde lessen.</p><p class="muted">De planner geeft voorrang aan eerder fout beantwoorde en nog niet goed beheerste woorden en zinnen.</p><p><button class="btn secondary" onclick="startWeakReview()" ${!reviewCandidates().some(w=>{const r=state.reviews[w.key];return r&&r.lastSeen&&(r.stage<=2||r.lastCorrect===false)})?'disabled':''}>Oefen mijn lastige woorden</button></p><p class="muted">Typ zelf de Italiaanse vertaling van het woord of de volledige zin. Een fout antwoord moet je verbeteren voordat je verder kunt. Alleen een goed antwoord bij de eerste poging telt als direct beheerst. Lastige woorden komen eerder terug. Per ronde maximaal 12 woorden.</p>${due.length?`<button class="btn" onclick="startReview()">Start herhaling (${Math.min(due.length,12)} opdrachten)</button>`:`<p>Geen woorden gepland. Rond eerst een les af of kom later terug.</p>`}</div>`;
 }
 function wordlist(){let n=Number(document.getElementById('wl').value);document.getElementById('wordlist').innerHTML=lessons[n].words.map(([it,nl])=>`<div class="row" style="border-bottom:1px solid #eef2ee;padding:11px 0"><div><strong>${esc(it)}</strong><div class="sub">${esc(nl)}</div></div><button class="btn secondary" aria-label="Luister naar ${esc(it)}" onclick="speak(${JSON.stringify(it).replace(/"/g,'&quot;')})">▶</button></div>`).join('')}
 let previewLesson=false;
