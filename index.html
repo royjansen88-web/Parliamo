@@ -238,13 +238,38 @@ function renderWriting(){
 }
 let conversationScenario=-1,conversationTurn=0,conversationFirstMistake=false,conversationCorrect=0;
 function startConversation(n){conversationScenario=n;conversationTurn=0;conversationFirstMistake=false;conversationCorrect=0;renderConversation()}
+function conversationAnswerMatches(input,answers,scenario,turn){
+ const tidy=value=>norm(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+ const response=tidy(input);
+ if(answers.some(a=>tidy(a)===response))return true;
+ const withoutPoliteness=value=>value.replace(/\b(per favore|grazie|buongiorno|buonasera|ciao|salve)\b/g,'').replace(/\s+/g,' ').trim();
+ if(answers.some(a=>withoutPoliteness(tidy(a))===withoutPoliteness(response)))return true;
+ const variants=[
+  [/^(si |si, )?(mi chiamo|sono) [a-z]+$/,0,0],
+  [/^(sono (dei paesi bassi|olandese|olandesa)|vengo (dai paesi bassi|dall olanda))$/,0,1],
+  [/^(ho|io ho) [a-z0-9]+ anni$/,0,2],
+  [/^(vorrei|prendo|desidero|voglio) (un |uno |una |dell )?(caffe|caffe espresso)$/,1,0],
+  [/^(si|certo|volentieri|si volentieri|si grazie)$/,1,1],
+  [/^(no|no grazie|nient altro|basta cosi)$/,1,2],
+  [/^(dove (e|si trova) la stazione|come arrivo alla stazione)$/,2,0],
+  [/^(si|si grazie|ho capito|si ho capito|capisco)$/,2,1],
+  [/^(no|no grazie|non ho altre domande)$/,2,2],
+  [/^(si )?(studio|io studio) italiano$/,3,0],
+  [/^(si )?(studio|io studio) ogni giorno$/,3,1],
+  [/^(no )?(non parlo|io non parlo) francese$/,3,2],
+  [/^(si )?(abbiamo|noi abbiamo) prenotato$/,4,0],
+  [/^(prendiamo|noi prendiamo|vorremmo) due pizze$/,4,1],
+  [/^(il conto|posso avere il conto|vorrei il conto)$/,4,2]
+ ];
+ return variants.some(([pattern,s,t])=>s===scenario&&t===turn&&pattern.test(withoutPoliteness(response)));
+}
 function checkConversation(){
  const field=document.getElementById('conversationInput');if(!field||!field.value.trim())return;
  const item=conversationScenarios[conversationScenario].turns[conversationTurn];
- const good=item[2].some(answer=>sentenceMatches(field.value,answer));
+ const good=conversationAnswerMatches(field.value,item[2],conversationScenario,conversationTurn);
  if(!good){
   conversationFirstMistake=true;
-  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Typ het voorbeeldantwoord om verder te gaan.</div>`;
+  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.</div>`;
   field.value='';field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
