@@ -237,7 +237,8 @@ function renderWriting(){
  document.getElementById('writingInput').focus();
 }
 let conversationScenario=-1,conversationTurn=0,conversationFirstMistake=false,conversationCorrect=0;
-function startConversation(n){conversationScenario=n;conversationTurn=0;conversationFirstMistake=false;conversationCorrect=0;renderConversation()}
+let conversationMode='type',conversationRecognized='',conversationRecognitionActive=false;
+function startConversation(n){conversationScenario=n;conversationTurn=0;conversationFirstMistake=false;conversationCorrect=0;conversationRecognized='';renderConversation()}
 function conversationAnswerMatches(input,answers,scenario,turn){
  const tidy=value=>norm(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
  const response=tidy(input);
@@ -263,6 +264,31 @@ function conversationAnswerMatches(input,answers,scenario,turn){
  ];
  return variants.some(([pattern,s,t])=>s===scenario&&t===turn&&pattern.test(withoutPoliteness(response)));
 }
+function setConversationMode(mode){conversationMode=mode;conversationRecognized='';renderConversation()}
+function recordConversation(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ const status=document.getElementById('conversationMicStatus');
+ if(!SR){if(status)status.textContent='Spraakherkenning is niet beschikbaar in deze browser. Gebruik de typmodus of probeer Chrome.';return}
+ if(conversationRecognitionActive)return;
+ const scenario=conversationScenario,turn=conversationTurn;
+ const recognition=new SR();recognition.lang='it-IT';recognition.interimResults=false;recognition.maxAlternatives=5;
+ conversationRecognitionActive=true;
+ if(status)status.textContent='Luistert... Spreek je antwoord in het Italiaans.';
+ const mic=document.getElementById('conversationMic');if(mic)mic.disabled=true;
+ recognition.onresult=e=>{
+  if(scenario!==conversationScenario||turn!==conversationTurn)return;
+  const options=Array.from(e.results[0]).map(x=>x.transcript);
+  const accepted=conversationScenarios[scenario].turns[turn][2];
+  conversationRecognized=options.find(x=>conversationAnswerMatches(x,accepted,scenario,turn))||options[0]||'';
+  const field=document.getElementById('conversationInput');
+  if(field)field.value=conversationRecognized;
+  const currentStatus=document.getElementById('conversationMicStatus');
+  if(currentStatus)currentStatus.textContent='Herkend: '+conversationRecognized+'. Controleer de tekst en druk op Antwoord controleren.';
+ };
+ recognition.onerror=e=>{const el=document.getElementById('conversationMicStatus');if(el)el.textContent='Spraakherkenning mislukt ('+e.error+'). Je kunt ook typen.'};
+ recognition.onend=()=>{conversationRecognitionActive=false;const el=document.getElementById('conversationMic');if(el)el.disabled=false};
+ try{recognition.start()}catch(e){conversationRecognitionActive=false;if(mic)mic.disabled=false;if(status)status.textContent='Microfoon kon niet starten. Controleer de toestemming.'}
+}
 function checkConversation(){
  const field=document.getElementById('conversationInput');if(!field||!field.value.trim())return;
  const item=conversationScenarios[conversationScenario].turns[conversationTurn];
@@ -273,7 +299,7 @@ function checkConversation(){
   field.value='';field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
- conversationTurn++;conversationFirstMistake=false;renderConversation();
+ conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
 }
 function renderConversation(){
  if(conversationScenario<0){
@@ -289,7 +315,7 @@ function renderConversation(){
   app.innerHTML=`<div class="card"><div class="eyebrow">Gesprek afgerond</div><h2>${esc(scenario.title)}</h2><div class="big">${score}%</div><p>Je eerste antwoord telt voor je score.</p><button class="btn" onclick="renderConversation()">Andere gesprekken</button></div>`;return;
  }
  const item=scenario.turns[conversationTurn];
- app.innerHTML=`<div class="card"><div class="eyebrow">${esc(scenario.title)} · beurt ${conversationTurn+1}/${scenario.turns.length}</div><div class="bar"><div class="fill" style="width:${conversationTurn/scenario.turns.length*100}%"></div></div><p class="muted">Italiaanse gesprekspartner:</p><h2>${esc(item[0])}</h2><p><button class="btn secondary" onclick="speak(conversationScenarios[conversationScenario].turns[conversationTurn][0])">▶ Luister naar de vraag</button></p><p>${esc(item[3])}</p><input id="conversationInput" type="text" autocomplete="off" placeholder="Jouw antwoord in het Italiaans" onkeydown="if(event.key==='Enter')checkConversation()"><p><button class="btn" onclick="checkConversation()">Antwoord controleren</button></p><div id="conversationFeedback"></div></div>`;
+ app.innerHTML=`<div class="card"><div class="eyebrow">${esc(scenario.title)} · beurt ${conversationTurn+1}/${scenario.turns.length}</div><div class="bar"><div class="fill" style="width:${conversationTurn/scenario.turns.length*100}%"></div></div><p class="muted">Italiaanse gesprekspartner:</p><h2>${esc(item[0])}</h2><p><button class="btn secondary" onclick="speak(conversationScenarios[conversationScenario].turns[conversationTurn][0])">▶ Luister naar de vraag</button></p><p>${esc(item[3])}</p><p><button class="btn secondary" onclick="setConversationMode('type')" ${conversationMode==='type'?'disabled':''}>Typen</button> <button class="btn secondary" onclick="setConversationMode('speak')" ${conversationMode==='speak'?'disabled':''}>Spreken</button></p>${conversationMode==='speak'?'<p><button class="btn secondary" id="conversationMic" onclick="recordConversation()">🎙 Spreek je antwoord in</button></p><p class="muted" id="conversationMicStatus">Je browser zet spraak om in tekst. Controleer het herkende antwoord: dit is geen fonetische uitspraakbeoordeling.</p>':''}<input id="conversationInput" type="text" autocomplete="off" placeholder="Jouw antwoord in het Italiaans" onkeydown="if(event.key==='Enter')checkConversation()"><p><button class="btn" onclick="checkConversation()">Antwoord controleren</button></p><div id="conversationFeedback"></div></div>`;
  document.getElementById('conversationInput').focus();
 }
 function render(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(current!==null){renderQuiz();return}if(tab==='home'){let p=state.passed.length;app.innerHTML=`<div class="card"><div class="eyebrow">Jouw leerroute · pre-A1 en A1</div><div class="row"><div><div class="big">${p}/${lessons.length}</div><div class="muted">lessen behaald</div></div><span class="pill">${p===lessons.length?'Module afgerond':'Startniveau'}</span></div><div class="bar"><div class="fill" style="width:${p/lessons.length*100}%"></div></div><p class="muted">Een les is behaald bij minimaal 80% en beide spreekopdrachten afgerond. Bij onvoldoende oefen je opnieuw.</p></div><div class="card"><div class="eyebrow">Lessen</div><div class="grid">${lessons.map((l,i)=>`<button class="lesson" ${i>0&&!state.passed.includes(i-1)?'disabled':''} onclick="start(${i})"><span class="pill">${state.passed.includes(i)?'✓ Behaald':i>0&&!state.passed.includes(i-1)?'🔒 Gesloten':'Beschikbaar'}</span><strong>${i+1}. ${esc(l.title)}</strong><small>${esc(l.goal)}</small></button>`).join('')}</div></div><div class="card"><div class="eyebrow">Werkwijze</div><p>Lees de uitleg, beluister woorden en maak 10 toetsvragen. Vanaf les 2 herhaal je automatisch twee woorden uit eerdere behaalde lessen. Fouten keren sneller terug.</p></div>`}else if(tab==='words'){let available=lessons.slice(0,Math.min(lessons.length,state.passed.length+1));app.innerHTML=`<div class="card"><div class="eyebrow">Woordentrainer</div><h2>Luister, leer en herhaal</h2><p class="muted">${available.length*20} woorden beschikbaar. Tik op het luidsprekertje om de Italiaanse uitspraak te horen.</p><select id="wl" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${available.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><div id="wordlist"></div></div>`;document.getElementById('wl').onchange=wordlist;wordlist();app.insertAdjacentHTML('beforeend',audioSettings())}else if(tab==='review'){renderReview();}else if(tab==='diagnostic'){renderDiagnostic();}else if(tab==='writing'){renderWriting();}else if(tab==='conversation'){renderConversation();}else if(tab==='practice'){app.innerHTML=`<div class="card"><div class="eyebrow">Gericht oefenen</div><h2>Extra oefenen</h2><p>Kies een vrijgespeelde les. Je kunt dezelfde vaardigheden opnieuw trainen. Bij iedere poging krijg je nieuwe woorden. Vanaf les 2 komen er ook twee herhalingsvragen uit eerder behaalde lessen. Lastige woorden keren sneller terug.</p>${lessons.map((l,i)=>`<p><button class="btn ${i>0&&!state.passed.includes(i-1)?'secondary':''}" ${i>0&&!state.passed.includes(i-1)?'disabled':''} onclick="start(${i})">${esc(l.title)} →</button></p>`).join('')}</div>`}else{let attempts=state.attempts;app.innerHTML=`<div class="card"><div class="eyebrow">Mijn ontwikkeling</div><h2>Voortgang</h2><p><strong>${state.passed.length}</strong> van de ${lessons.length} lessen behaald</p><p><strong>${attempts.length}</strong> toetsen gemaakt</p><p><strong>${attempts.length?Math.round(attempts.reduce((s,a)=>s+a.score,0)/attempts.length):0}%</strong> gemiddelde toetsscore</p><div class="bar"><div class="fill" style="width:${state.passed.length/lessons.length*100}%"></div></div><h3>Toetshistorie</h3>${attempts.slice(-8).reverse().map(a=>`<p class="muted">${esc(lessons[a.lesson].title)} · ${a.score}% · ${esc(a.date)}</p>`).join('')||'<p class="muted">Nog geen toetsen gemaakt.</p>'}</div><div class="card"><div class="eyebrow">Veiligstellen van je voortgang</div><p>Je voortgang staat nu in deze browser. Maak regelmatig een back-up en bewaar die op een veilige plek. Met terugzetten vervang je de huidige voortgang.</p><div class="row" style="flex-wrap:wrap;justify-content:flex-start"><button class="btn" onclick="exportProgress()">Download back-up</button><button class="btn secondary" onclick="document.getElementById('progressBackup').click()">Herstel back-up</button><input id="progressBackup" type="file" accept=".json,application/json" style="display:none" onchange="importProgress(this)"></div><p class="foot">De code wordt via GitHub bewaard met versiegeschiedenis. Je leerresultaten worden nog niet online gesynchroniseerd.</p></div>`}}
