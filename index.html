@@ -290,6 +290,15 @@ function recordConversation(){
  recognition.onend=()=>{if(token!==conversationRecognitionToken)return;conversationRecognition=null;conversationRecognitionActive=false;const el=document.getElementById('conversationMic');if(el)el.disabled=false};
  try{recognition.start()}catch(e){conversationRecognition=null;conversationRecognitionActive=false;if(mic)mic.disabled=false;if(status)status.textContent='Microfoon kon niet starten. Controleer de toestemming.'}
 }
+function copyConversationForChatGPT(){
+ const field=document.getElementById('conversationInput');
+ if(!field||conversationScenario<0)return;
+ const item=conversationScenarios[conversationScenario].turns[conversationTurn];
+ const message='Controleer mijn Italiaans op A1-niveau. Italiaanse vraag: '+item[0]+'\\nOpdracht: '+item[3]+'\\nMijn antwoord: '+field.value.trim()+'\\nBeoordeel of dit antwoord grammaticaal correct en passend is. Geef een korte uitleg in het Nederlands en verbeter alleen wat nodig is. Accepteer ook andere correcte formuleringen.';
+ const done=()=>{const el=document.getElementById('conversationCopyStatus');if(el)el.textContent='Gekopieerd. Plak de tekst in ChatGPT om je antwoord te laten controleren.'};
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(message).then(done).catch(()=>{const el=document.getElementById('conversationCopyStatus');if(el)el.textContent='Kopiëren is geblokkeerd. Selecteer je antwoord en kopieer het handmatig.'})}
+ else{const el=document.getElementById('conversationCopyStatus');if(el)el.textContent=message}
+}
 function acceptConversationAlternative(){
  const field=document.getElementById('conversationInput');
  if(!field||!field.value.trim()||conversationScenario<0)return;
@@ -332,7 +341,7 @@ function checkConversation(){
  if(!good){
   conversationFirstMistake=true;
   const feedback=explainConversationAnswer(userAnswer,conversationScenario,conversationTurn);
-  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet herkend als passend antwoord. ${esc(feedback)}<p>${esc(item[3])}</p><p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.<p><button class="btn secondary" onclick="acceptConversationAlternative()">Mijn antwoord is ook correct — verder zonder punt</button></p><p class="muted">Gebruik dit alleen als je zeker weet dat jouw Italiaanse zin klopt. Je antwoord wordt lokaal bewaard voor verbetering van de oefeningen.</p></div>`;
+  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet herkend als passend antwoord. ${esc(feedback)}<p>${esc(item[3])}</p><p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.<p><button class="btn secondary" onclick="copyConversationForChatGPT()">Kopieer voor controle in ChatGPT</button></p><p class="muted" id="conversationCopyStatus">Je kunt de vraag en je eigen antwoord rechtstreeks door ChatGPT laten beoordelen. Je moet de gekopieerde tekst zelf in ChatGPT plakken.</p><p><button class="btn secondary" onclick="acceptConversationAlternative()">Mijn antwoord lijkt ook correct — verder zonder punt</button></p><p class="muted">Gebruik dit alleen als je zeker weet dat jouw Italiaanse zin klopt. Je antwoord wordt lokaal bewaard voor verbetering van de oefeningen.</p></div>`;
   field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
