@@ -237,8 +237,8 @@ function renderWriting(){
  document.getElementById('writingInput').focus();
 }
 let conversationScenario=-1,conversationTurn=0,conversationFirstMistake=false,conversationCorrect=0;
-let conversationMode='type',conversationRecognized='',conversationRecognitionActive=false;
-function startConversation(n){conversationScenario=n;conversationTurn=0;conversationFirstMistake=false;conversationCorrect=0;conversationRecognized='';renderConversation()}
+let conversationMode='type',conversationRecognized='',conversationRecognitionActive=false,conversationRecognition=null,conversationRecognitionToken=0;
+function startConversation(n){stopConversationRecognition();conversationScenario=n;conversationTurn=0;conversationFirstMistake=false;conversationCorrect=0;conversationRecognized='';renderConversation()}
 function conversationAnswerMatches(input,answers,scenario,turn){
  const tidy=value=>norm(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
  const response=tidy(input);
@@ -264,19 +264,20 @@ function conversationAnswerMatches(input,answers,scenario,turn){
  ];
  return variants.some(([pattern,s,t])=>s===scenario&&t===turn&&pattern.test(withoutPoliteness(response)));
 }
-function setConversationMode(mode){conversationMode=mode;conversationRecognized='';renderConversation()}
+function setConversationMode(mode){stopConversationRecognition();conversationMode=mode;conversationRecognized='';renderConversation()}
+function stopConversationRecognition(){conversationRecognitionToken++;if(conversationRecognition){try{conversationRecognition.abort()}catch(e){}conversationRecognition=null}conversationRecognitionActive=false}
 function recordConversation(){
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
  const status=document.getElementById('conversationMicStatus');
  if(!SR){if(status)status.textContent='Spraakherkenning is niet beschikbaar in deze browser. Gebruik de typmodus of probeer Chrome.';return}
  if(conversationRecognitionActive)return;
- const scenario=conversationScenario,turn=conversationTurn;
- const recognition=new SR();recognition.lang='it-IT';recognition.interimResults=false;recognition.maxAlternatives=5;
+ const scenario=conversationScenario,turn=conversationTurn,token=++conversationRecognitionToken;
+ const recognition=new SR();conversationRecognition=recognition;recognition.lang='it-IT';recognition.interimResults=false;recognition.maxAlternatives=5;
  conversationRecognitionActive=true;
  if(status)status.textContent='Luistert... Spreek je antwoord in het Italiaans.';
  const mic=document.getElementById('conversationMic');if(mic)mic.disabled=true;
  recognition.onresult=e=>{
-  if(scenario!==conversationScenario||turn!==conversationTurn)return;
+  if(token!==conversationRecognitionToken||scenario!==conversationScenario||turn!==conversationTurn)return;
   const options=Array.from(e.results[0]).map(x=>x.transcript);
   const accepted=conversationScenarios[scenario].turns[turn][2];
   conversationRecognized=options.find(x=>conversationAnswerMatches(x,accepted,scenario,turn))||options[0]||'';
@@ -285,21 +286,25 @@ function recordConversation(){
   const currentStatus=document.getElementById('conversationMicStatus');
   if(currentStatus)currentStatus.textContent='Herkend: '+conversationRecognized+'. Controleer de tekst en druk op Antwoord controleren.';
  };
- recognition.onerror=e=>{const el=document.getElementById('conversationMicStatus');if(el)el.textContent='Spraakherkenning mislukt ('+e.error+'). Je kunt ook typen.'};
- recognition.onend=()=>{conversationRecognitionActive=false;const el=document.getElementById('conversationMic');if(el)el.disabled=false};
- try{recognition.start()}catch(e){conversationRecognitionActive=false;if(mic)mic.disabled=false;if(status)status.textContent='Microfoon kon niet starten. Controleer de toestemming.'}
+ recognition.onerror=e=>{if(token!==conversationRecognitionToken)return;const el=document.getElementById('conversationMicStatus');if(el)el.textContent='Spraakherkenning mislukt ('+e.error+'). Je kunt ook typen.'};
+ recognition.onend=()=>{if(token!==conversationRecognitionToken)return;conversationRecognition=null;conversationRecognitionActive=false;const el=document.getElementById('conversationMic');if(el)el.disabled=false};
+ try{recognition.start()}catch(e){conversationRecognition=null;conversationRecognitionActive=false;if(mic)mic.disabled=false;if(status)status.textContent='Microfoon kon niet starten. Controleer de toestemming.'}
 }
 function checkConversation(){
  const field=document.getElementById('conversationInput');if(!field||!field.value.trim())return;
  const item=conversationScenarios[conversationScenario].turns[conversationTurn];
  const good=conversationAnswerMatches(field.value,item[2],conversationScenario,conversationTurn);
+ if(!good&&conversationMode==='speak'&&!conversationFirstMistake){
+  const status=document.getElementById('conversationMicStatus');
+  if(status)status.textContent='Niet herkend als een verwacht antwoord. Spraakherkenning kan woorden verkeerd verstaan. Controleer of verbeter de tekst en probeer opnieuw.';
+ }
  if(!good){
   conversationFirstMistake=true;
   document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.</div>`;
   field.value='';field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
- conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
+ stopConversationRecognition();conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
 }
 function renderConversation(){
  if(conversationScenario<0){
@@ -311,7 +316,7 @@ function renderConversation(){
   const score=Math.round(conversationCorrect/scenario.turns.length*100);
   if(!Array.isArray(state.conversationResults))state.conversationResults=[];
   state.conversationResults.push({scenario:scenario.title,score,date:new Date().toLocaleDateString('nl-NL')});save();
-  conversationScenario=-1;
+  stopConversationRecognition();conversationScenario=-1;
   app.innerHTML=`<div class="card"><div class="eyebrow">Gesprek afgerond</div><h2>${esc(scenario.title)}</h2><div class="big">${score}%</div><p>Je eerste antwoord telt voor je score.</p><button class="btn" onclick="renderConversation()">Andere gesprekken</button></div>`;return;
  }
  const item=scenario.turns[conversationTurn];
