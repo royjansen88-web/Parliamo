@@ -398,24 +398,24 @@ function reviewCandidates(){
  });
  return pool.sort((a,b)=>a.due-b.due||a.stage-b.stage);
 }
-let reviewDemo=false;
+let reviewDemo=false,reviewRoundResults=[];
 function startReviewDemo(){
  const n=Number(document.getElementById('reviewDemoLesson')?.value||0);
  const lesson=lessons[n];
  if(!lesson)return;
  const words=shuffle(lesson.words.map(([it,nl],i)=>({key:lesson.id+':'+i,it,nl,li:n,type:'word'}))).slice(0,8);
  const sentences=shuffle(sentenceExercises[n].map((v,i)=>({key:lesson.id+':sentence'+i,it:v.italian,nl:v.dutch,li:n,type:'sentence'}))).slice(0,2);
- reviewDemo=true;reviewSession=shuffle([...words,...sentences]);reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
+ reviewDemo=true;reviewRoundResults=[];reviewSession=shuffle([...words,...sentences]);reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function startWeakReview(){
- reviewDemo=false;
+ reviewDemo=false;reviewRoundResults=[];
  const pool=reviewCandidates().filter(w=>{const rec=state.reviews[w.key];return rec&&rec.lastSeen&&(rec.stage<=2||rec.lastCorrect===false)});
  const sorted=pool.sort((a,b)=>{const x=state.reviews[a.key],y=state.reviews[b.key];return Number(x.lastCorrect)-Number(y.lastCorrect)||(x.stage||0)-(y.stage||0)||(x.due||0)-(y.due||0)});
  reviewSession=sorted.slice(0,12);
  reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function startReview(){
- reviewDemo=false;
+ reviewDemo=false;reviewRoundResults=[];
  const pool=reviewCandidates(),now=Date.now();
  const due=pool.filter(w=>w.due<=now);
  const priority=w=>{const r=state.reviews[w.key];return r&&r.lastSeen?((r.lastCorrect===false?100:0)+(5-(r.stage||0))*10):0};
@@ -440,7 +440,14 @@ function submitReview(){
  const prev=state.reviews[w.key]||{stage:0};
  const stage=reviewMistakes===0?Math.min((prev.stage||0)+1,5):0;
  const days=[1,2,4,7,14,30][stage];
+ reviewRoundResults.push({it:w.it,nl:w.nl,li:w.li,type:w.type,firstTry:reviewMistakes===0});
  if(!reviewDemo){state.reviews[w.key]={stage,due:Date.now()+days*86400000,lastCorrect:reviewMistakes===0,lastSeen:new Date().toISOString()};save();}reviewIndex++;reviewRevealed=false;reviewMistakes=0;renderReview();
+}
+function retryReviewMistakes(){
+ const missed=reviewRoundResults.filter(x=>!x.firstTry);
+ if(!missed.length)return;
+ reviewSession=shuffle(missed.map(x=>({...x,key:lessons[x.li].id+':'+(x.type==='sentence'?'sentence'+sentenceExercises[x.li].findIndex(v=>v.italian===x.it):lessons[x.li].words.findIndex(v=>v[0]===x.it))})));
+ reviewRoundResults=[];reviewIndex=0;reviewRevealed=false;reviewMistakes=0;reviewDemo=true;renderReview();
 }
 function renderReview(){
  const pool=reviewCandidates(),due=pool.filter(w=>w.due<=Date.now());
@@ -452,7 +459,10 @@ function renderReview(){
  }
  if(reviewSession.length&&reviewIndex>=reviewSession.length){
   const wasDemo=reviewDemo;reviewDemo=false;reviewSession=[];reviewIndex=0;
-  app.innerHTML=`<div class="card"><h2>${wasDemo?'Proefronde afgerond':'Herhaalronde afgerond'}</h2><p>${wasDemo?'Je hebt de herhaaltrainer getest. Je voortgang en herhaalplanning zijn niet gewijzigd.':'Goed gewerkt. De volgende herhaling wordt gepland op basis van je antwoorden.'}</p><button class="btn" onclick="renderReview()">Bekijk herhaalplanning</button></div>`;
+  const correct=reviewRoundResults.filter(x=>x.firstTry).length;
+  const missed=reviewRoundResults.filter(x=>!x.firstTry);
+  const score=reviewRoundResults.length?Math.round(100*correct/reviewRoundResults.length):0;
+  app.innerHTML=`<div class="card"><h2>${wasDemo?'Proefronde afgerond':'Herhaalronde afgerond'}</h2><p>${wasDemo?'Je hebt de herhaaltrainer getest. Je voortgang en herhaalplanning zijn niet gewijzigd.':'Goed gewerkt. De volgende herhaling wordt gepland op basis van je antwoorden.'}</p><div class="big">${score}%</div><p>${correct} van de ${reviewRoundResults.length} opdrachten in één keer goed.</p>${missed.length?`<h3>Deze woorden en zinnen verdienen extra aandacht</h3>${missed.map(x=>`<p><strong>${esc(x.it)}</strong> — ${esc(x.nl)}</p>`).join('')}<button class="btn secondary" onclick="retryReviewMistakes()">Oefen deze ${missed.length} opnieuw</button>`:'<p>Alles in één keer goed!</p>'}<p><button class="btn" onclick="renderReview()">Bekijk herhaalplanning</button></div>`;
   return;
  }
  app.innerHTML=`<div class="card"><div class="eyebrow">Gespreide herhaling</div><h2>Jouw dagelijkse herhaling</h2><div class="card" style="box-shadow:none;border-color:#cfe3d4"><h3>Probeer de herhaaltrainer</h3><p class="muted">Kies een willekeurige les, ook als deze nog niet is vrijgespeeld. Je maakt 10 oefeningen zonder gevolgen voor je voortgang.</p><select id="reviewDemoLesson" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${lessons.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><button class="btn secondary" onclick="startReviewDemo()">Start proefronde</button></div><p><strong>${due.length}</strong> woorden en zinnen klaar voor herhaling uit <strong>${state.passedIds.length}</strong> behaalde lessen.</p><p class="muted">De planner geeft voorrang aan eerder fout beantwoorde en nog niet goed beheerste woorden en zinnen.</p><p><button class="btn secondary" onclick="startWeakReview()" ${!reviewCandidates().some(w=>{const r=state.reviews[w.key];return r&&r.lastSeen&&(r.stage<=2||r.lastCorrect===false)})?'disabled':''}>Oefen mijn lastige woorden</button></p><p class="muted">Typ zelf de Italiaanse vertaling van het woord of de volledige zin. Een fout antwoord moet je verbeteren voordat je verder kunt. Alleen een goed antwoord bij de eerste poging telt als direct beheerst. Lastige woorden komen eerder terug. Per ronde maximaal 12 woorden.</p>${due.length?`<button class="btn" onclick="startReview()">Start herhaling (${Math.min(due.length,12)} opdrachten)</button>`:`<p>Geen woorden gepland. Rond eerst een les af of kom later terug.</p>`}</div>`;
