@@ -290,6 +290,17 @@ function recordConversation(){
  recognition.onend=()=>{if(token!==conversationRecognitionToken)return;conversationRecognition=null;conversationRecognitionActive=false;const el=document.getElementById('conversationMic');if(el)el.disabled=false};
  try{recognition.start()}catch(e){conversationRecognition=null;conversationRecognitionActive=false;if(mic)mic.disabled=false;if(status)status.textContent='Microfoon kon niet starten. Controleer de toestemming.'}
 }
+function acceptConversationAlternative(){
+ const field=document.getElementById('conversationInput');
+ if(!field||!field.value.trim()||conversationScenario<0)return;
+ const response=field.value.trim();
+ const item=conversationScenarios[conversationScenario].turns[conversationTurn];
+ if(!Array.isArray(state.conversationAlternatives))state.conversationAlternatives=[];
+ state.conversationAlternatives.push({scenario:conversationScenario,turn:conversationTurn,answer:response,expected:item[1],date:new Date().toISOString()});
+ save();
+ stopConversationRecognition();
+ conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
+}
 function checkConversation(){
  const field=document.getElementById('conversationInput');if(!field||!field.value.trim())return;
  const item=conversationScenarios[conversationScenario].turns[conversationTurn];
@@ -300,7 +311,7 @@ function checkConversation(){
  }
  if(!good){
   conversationFirstMistake=true;
-  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.</div>`;
+  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.<p><button class="btn secondary" onclick="acceptConversationAlternative()">Mijn antwoord is ook correct — verder zonder punt</button></p><p class="muted">Gebruik dit alleen als je zeker weet dat jouw Italiaanse zin klopt. Je antwoord wordt lokaal bewaard voor verbetering van de oefeningen.</p></div>`;
   field.value='';field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
@@ -309,7 +320,7 @@ function checkConversation(){
 function renderConversation(){
  if(conversationScenario<0){
   const history=Array.isArray(state.conversationResults)?state.conversationResults:[];
-  app.innerHTML=`<div class="card"><div class="eyebrow">A1 · reageren in gesprekken</div><h2>Gesprekstrainer</h2><p>Luister naar een Italiaanse vraag en schrijf een passend antwoord. Elk gesprek heeft drie beurten.</p><p class="muted">Je oefent met voorbeeldantwoorden, niet met een vrije AI-gesprekspartner. Andere correcte formuleringen kunnen nog worden afgekeurd.</p>${history.length?'<p>Gesprekken afgerond: <strong>'+history.length+'</strong></p>':''}${conversationScenarios.map((x,i)=>`<p><button class="btn secondary" onclick="startConversation(${i})">${esc(x.title)} →</button></p>`).join('')}</div>`;return;
+  app.innerHTML=`<div class="card"><div class="eyebrow">A1 · reageren in gesprekken</div><h2>Gesprekstrainer</h2><p>Luister naar een Italiaanse vraag en schrijf een passend antwoord. Elk gesprek heeft drie beurten.</p><p class="muted">Je oefent met voorbeeldantwoorden, niet met een vrije AI-gesprekspartner. Andere correcte formuleringen kunnen nog worden afgekeurd. Je kunt dan zonder punt doorgaan en je alternatief bewaren.</p>${history.length?'<p>Gesprekken afgerond: <strong>'+history.length+'</strong></p>':''}${conversationScenarios.map((x,i)=>`<p><button class="btn secondary" onclick="startConversation(${i})">${esc(x.title)} →</button></p>`).join('')}</div>`;return;
  }
  const scenario=conversationScenarios[conversationScenario];
  if(conversationTurn>=scenario.turns.length){
