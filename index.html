@@ -398,11 +398,19 @@ function reviewCandidates(){
  });
  return pool.sort((a,b)=>a.due-b.due||a.stage-b.stage);
 }
+function startWeakReview(){
+ const pool=reviewCandidates().filter(w=>{const rec=state.reviews[w.key];return rec&&rec.lastSeen&&(rec.stage<=2||rec.lastCorrect===false)});
+ const sorted=pool.sort((a,b)=>{const x=state.reviews[a.key],y=state.reviews[b.key];return Number(x.lastCorrect)-Number(y.lastCorrect)||(x.stage||0)-(y.stage||0)||(x.due||0)-(y.due||0)});
+ reviewSession=sorted.slice(0,12);
+ reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
+}
 function startReview(){
  const pool=reviewCandidates(),now=Date.now();
  const due=pool.filter(w=>w.due<=now);
- const sentences=shuffle(due.filter(w=>w.type==='sentence')).slice(0,3);
- const words=shuffle(due.filter(w=>w.type==='word')).slice(0,12-sentences.length);
+ const priority=w=>{const r=state.reviews[w.key];return r&&r.lastSeen?((r.lastCorrect===false?100:0)+(5-(r.stage||0))*10):0};
+ const rank=items=>items.map(w=>({w,score:priority(w)+Math.random()*5})).sort((a,b)=>b.score-a.score).map(x=>x.w);
+ const sentences=rank(due.filter(w=>w.type==='sentence')).slice(0,3);
+ const words=rank(due.filter(w=>w.type==='word')).slice(0,12-sentences.length);
  reviewSession=shuffle([...sentences,...words]);
  reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
@@ -437,7 +445,7 @@ function renderReview(){
   app.innerHTML=`<div class="card"><h2>Herhaalronde afgerond</h2><p>Goed gewerkt. De volgende herhaling wordt gepland op basis van je antwoorden.</p><button class="btn" onclick="renderReview()">Bekijk herhaalplanning</button></div>`;
   return;
  }
- app.innerHTML=`<div class="card"><div class="eyebrow">Gespreide herhaling</div><h2>Jouw dagelijkse herhaling</h2><p><strong>${due.length}</strong> woorden en zinnen klaar voor herhaling uit <strong>${state.passedIds.length}</strong> behaalde lessen.</p><p class="muted">Typ zelf de Italiaanse vertaling van het woord of de volledige zin. Een fout antwoord moet je verbeteren voordat je verder kunt. Alleen een goed antwoord bij de eerste poging telt als direct beheerst. Lastige woorden komen eerder terug. Per ronde maximaal 12 woorden.</p>${due.length?`<button class="btn" onclick="startReview()">Start herhaling (${Math.min(due.length,12)} opdrachten)</button>`:`<p>Geen woorden gepland. Rond eerst een les af of kom later terug.</p>`}</div>`;
+ app.innerHTML=`<div class="card"><div class="eyebrow">Gespreide herhaling</div><h2>Jouw dagelijkse herhaling</h2><p><strong>${due.length}</strong> woorden en zinnen klaar voor herhaling uit <strong>${state.passedIds.length}</strong> behaalde lessen.</p><p class="muted">De planner geeft voorrang aan eerder fout beantwoorde en nog niet goed beheerste woorden en zinnen.</p><p><button class="btn secondary" onclick="startWeakReview()" ${!reviewCandidates().some(w=>{const r=state.reviews[w.key];return r&&r.lastSeen&&(r.stage<=2||r.lastCorrect===false)})?'disabled':''}>Oefen mijn lastige woorden</button></p><p class="muted">Typ zelf de Italiaanse vertaling van het woord of de volledige zin. Een fout antwoord moet je verbeteren voordat je verder kunt. Alleen een goed antwoord bij de eerste poging telt als direct beheerst. Lastige woorden komen eerder terug. Per ronde maximaal 12 woorden.</p>${due.length?`<button class="btn" onclick="startReview()">Start herhaling (${Math.min(due.length,12)} opdrachten)</button>`:`<p>Geen woorden gepland. Rond eerst een les af of kom later terug.</p>`}</div>`;
 }
 function wordlist(){let n=Number(document.getElementById('wl').value);document.getElementById('wordlist').innerHTML=lessons[n].words.map(([it,nl])=>`<div class="row" style="border-bottom:1px solid #eef2ee;padding:11px 0"><div><strong>${esc(it)}</strong><div class="sub">${esc(nl)}</div></div><button class="btn secondary" aria-label="Luister naar ${esc(it)}" onclick="speak(${JSON.stringify(it).replace(/"/g,'&quot;')})">▶</button></div>`).join('')}
 let previewLesson=false;
