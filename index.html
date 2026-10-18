@@ -301,18 +301,39 @@ function acceptConversationAlternative(){
  stopConversationRecognition();
  conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
 }
+function explainConversationAnswer(value,scenario,turn){
+ const input=norm(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+ if(!input)return 'Vul eerst een antwoord in.';
+ if(scenario===0&&turn===0){
+  if(/^mi chiamo\s*$/i.test(input))return 'Na mi chiamo hoort je naam, bijvoorbeeld: Mi chiamo Roy.';
+  if(/^io (chiamo|chiama)\b/.test(input))return 'Om je naam te zeggen gebruik je mi chiamo, niet io chiamo.';
+  return 'Gebruik bijvoorbeeld mi chiamo gevolgd door je eigen naam, of sono gevolgd door je naam.';
+ }
+ if(scenario===0&&turn===1)return 'Vertel uit welk land je komt: sono dei Paesi Bassi of vengo dai Paesi Bassi.';
+ if(scenario===0&&turn===2){
+  if(/\b(sono|sei)\b/.test(input))return 'Leeftijd zeg je met avere: ho ... anni, niet sono ... anni.';
+  return 'Gebruik ho + je leeftijd + anni, bijvoorbeeld ho dodici anni.';
+ }
+ if(scenario===1&&turn===0)return 'Bestel iets met vorrei of prendo en noem het drankje, bijvoorbeeld vorrei un caffè.';
+ if(scenario===2&&turn===0)return 'Stel een vraag naar de locatie, bijvoorbeeld dov’è la stazione?';
+ if(scenario===3&&turn===2)return 'Ontken met non vóór het werkwoord: non parlo francese.';
+ if(scenario===4&&turn===1)return 'Gebruik prendiamo voor wij nemen, bijvoorbeeld prendiamo due pizze.';
+ return 'Dit antwoord komt niet overeen met de bekende varianten. Dat betekent niet automatisch dat je Italiaans fout is.';
+}
 function checkConversation(){
  const field=document.getElementById('conversationInput');if(!field||!field.value.trim())return;
  const item=conversationScenarios[conversationScenario].turns[conversationTurn];
- const good=conversationAnswerMatches(field.value,item[2],conversationScenario,conversationTurn);
+ const userAnswer=field.value.trim();
+ const good=conversationAnswerMatches(userAnswer,item[2],conversationScenario,conversationTurn);
  if(!good&&conversationMode==='speak'&&!conversationFirstMistake){
   const status=document.getElementById('conversationMicStatus');
   if(status)status.textContent='Niet herkend als een verwacht antwoord. Spraakherkenning kan woorden verkeerd verstaan. Controleer of verbeter de tekst en probeer opnieuw.';
  }
  if(!good){
   conversationFirstMistake=true;
-  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet goed. ${esc(item[3])}<p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.<p><button class="btn secondary" onclick="acceptConversationAlternative()">Mijn antwoord is ook correct — verder zonder punt</button></p><p class="muted">Gebruik dit alleen als je zeker weet dat jouw Italiaanse zin klopt. Je antwoord wordt lokaal bewaard voor verbetering van de oefeningen.</p></div>`;
-  field.value='';field.focus();return;
+  const feedback=explainConversationAnswer(userAnswer,conversationScenario,conversationTurn);
+  document.getElementById('conversationFeedback').innerHTML=`<div class="feedback bad">Nog niet herkend als passend antwoord. ${esc(feedback)}<p>${esc(item[3])}</p><p>Een mogelijk antwoord: <strong>${esc(item[1])}</strong></p>Probeer een andere formulering, of typ het voorbeeldantwoord. Een andere correcte zin kan nog steeds ontbreken.<p><button class="btn secondary" onclick="acceptConversationAlternative()">Mijn antwoord is ook correct — verder zonder punt</button></p><p class="muted">Gebruik dit alleen als je zeker weet dat jouw Italiaanse zin klopt. Je antwoord wordt lokaal bewaard voor verbetering van de oefeningen.</p></div>`;
+  field.focus();return;
  }
  if(!conversationFirstMistake)conversationCorrect++;
  stopConversationRecognition();conversationTurn++;conversationFirstMistake=false;conversationRecognized='';renderConversation();
