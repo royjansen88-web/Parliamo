@@ -92,12 +92,14 @@ function mergeProgress(local,remote){
  for(const item of b.attempts){if(!attempts.some(x=>JSON.stringify(x)===JSON.stringify(item)))attempts.push(item)}
  const oralExamResults=[...(Array.isArray(a.oralExamResults)?a.oralExamResults:[])];
  for(const item of (Array.isArray(b.oralExamResults)?b.oralExamResults:[])){if(!oralExamResults.some(x=>x.id===item.id))oralExamResults.push(item)}
+ const finalExamResults=[...(Array.isArray(a.finalExamResults)?a.finalExamResults:[])];
+ for(const item of (Array.isArray(b.finalExamResults)?b.finalExamResults:[])){if(!finalExamResults.some(x=>x.id&&item.id?x.id===item.id:JSON.stringify(x)===JSON.stringify(item)))finalExamResults.push(item)}
  const reviews={...b.reviews};
  for(const [id,record] of Object.entries(a.reviews)){
   const other=reviews[id];
   if(!other||Date.parse(record?.lastSeen||0)>=Date.parse(other?.lastSeen||0))reviews[id]=record;
  }
- return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews,oralExamResults});
+ return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews,oralExamResults,finalExamResults});
 }
 function cloudStatus(message){cloudMessage=message;const el=document.getElementById('cloudStatus');if(el)el.textContent=message}
 function cloudError(e){cloudStatus('Synchronisatie mislukt: '+(e.message||e));}
@@ -688,6 +690,12 @@ async function copyOralChatPrompt(){
   if(status)status.textContent='Automatisch kopiëren lukt niet. De tekst is geselecteerd: kies Kopieer via je apparaat.';
  }
 }
+function renderExamMistakes(){
+ const result=(state.finalExamResults||[]).at(-1);
+ if(!result?.details){app.innerHTML='<div class="card"><h2>Geen antwoordinzage beschikbaar</h2><button class="btn" onclick="examIndex=-1;renderFinalExam()">Terug</button></div>';return}
+ const missed=result.details.filter(x=>!x.good);
+ app.innerHTML='<div class="card"><h2>Je antwoorden</h2><p>'+missed.length+' antwoorden niet herkend. Ook correcte alternatieven kunnen als fout worden beoordeeld.</p>'+(missed.length?missed.map(x=>'<p><strong>'+esc(x.question)+'</strong><br>Jouw antwoord: '+esc(x.answer)+'<br>Voorbeeldantwoord: '+esc(x.expected)+'</p>').join(''):'<p>Alles herkend!</p>')+'<button class="btn" onclick="examIndex=-1;renderFinalExam()">Terug naar examen</button></div>';
+}
 function renderFinalExam(){
  if(examIndex<0){
   const history=Array.isArray(state.finalExamResults)?state.finalExamResults:[];
@@ -698,7 +706,7 @@ function renderFinalExam(){
    const categories=['Woordenschat','Grammatica','Schrijven','Luisteren'],breakdown={};
    categories.forEach(c=>{const answers=examAnswers.filter(a=>a.category===c);breakdown[c]=Math.round(answers.filter(a=>a.good).length/answers.length*100)});
    const score=Math.round(examAnswers.filter(a=>a.good).length/examItems.length*100);
-   const result={date:new Date().toLocaleDateString('nl-NL'),score,breakdown,questions:examItems.length};
+   const result={id:Date.now().toString(36),date:new Date().toLocaleDateString('nl-NL'),score,breakdown,questions:examItems.length,details:examAnswers.map((a,i)=>({...a,question:examItems[i].question,expected:examItems[i].answer}))};
    if(!Array.isArray(state.finalExamResults))state.finalExamResults=[];
    state.finalExamResults.push(result);save();examDone=true;
   }
@@ -713,7 +721,7 @@ function submitFinalExam(){
  const field=document.getElementById('examAnswer');if(!field)return;
  const q=examItems[examIndex],answer=field.value.trim();
  if(!answer){alert('Vul eerst een antwoord in.');return}
- examAnswers.push({category:q.category,good:sentenceMatches(answer,q.answer)});
+ examAnswers.push({category:q.category,good:sentenceMatches(answer,q.answer),answer});
  examIndex++;renderFinalExam();
 }
 function render(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(current!==null){renderQuiz();return}if(tab==='exam'){renderFinalExam();return}if(tab==='practice'&&exerciseMenu==='main'){renderExerciseHub();return}if(tab==='practice'&&exerciseMenu!=='practice'){const mode=exerciseMenu; if(mode==='words')tab='words';else if(mode==='skills')tab='skills';else if(mode==='writing')tab='writing';else if(mode==='conversation')tab='conversation';else if(mode==='diagnostic')tab='diagnostic';render();tab='practice';exerciseBack();return}if(tab==='home'){let p=state.passed.length;app.innerHTML=`<div class="card"><div class="eyebrow">Jouw leerroute · pre-A1 en A1</div><div class="row"><div><div class="big">${p}/${lessons.length}</div><div class="muted">lessen behaald</div></div><span class="pill">${p===lessons.length?'Module afgerond':'Startniveau'}</span></div><div class="bar"><div class="fill" style="width:${p/lessons.length*100}%"></div></div><p class="muted">Een les is behaald bij minimaal 80% en beide spreekopdrachten afgerond. Je kunt alle lessen alvast bekijken en testen; een voorbeeldtoets telt niet mee voor je voortgang.</p></div><div class="card"><div class="eyebrow">Lessen</div><div class="grid">${lessons.map((l,i)=>`<button class="lesson" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}"><span class="pill">${state.passed.includes(i)?'✓ Behaald':i>0&&!state.passed.includes(i-1)?'Voorbeeld bekijken':'Beschikbaar'}</span><strong>${i+1}. ${esc(l.title)}</strong><small>${esc(l.goal)}</small></button>`).join('')}</div></div><div class="card"><div class="eyebrow">Werkwijze</div><p>Lees de uitleg, beluister woorden en maak 10 toetsvragen. Vanaf les 2 herhaal je automatisch twee woorden uit eerdere behaalde lessen. Fouten keren sneller terug.</p></div>`}else if(tab==='words'){let available=lessons;app.innerHTML=`<div class="card"><div class="eyebrow">Woordentrainer</div><h2>Luister, leer en herhaal</h2><p class="muted">${available.length*20} woorden beschikbaar. Tik op het luidsprekertje om de Italiaanse uitspraak te horen.</p><select id="wl" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${available.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><div id="wordlist"></div></div><div class="card"><h2>Zoek in alle 480 woorden</h2><input id="wordSearch" type="search" placeholder="Zoek Italiaans of Nederlands" oninput="searchWords()" style="width:100%;padding:12px;border:1px solid #cad8cf;border-radius:10px"><div id="wordSearchResults"><p class="muted">Typ minimaal twee letters.</p></div></div>`;document.getElementById('wl').onchange=wordlist;wordlist();app.insertAdjacentHTML('beforeend',audioSettings())}else if(tab==='skills'){renderSkills();}else if(tab==='review'){renderReview();}else if(tab==='diagnostic'){renderDiagnostic();}else if(tab==='writing'){renderWriting();}else if(tab==='conversation'){renderConversation();}else if(tab==='practice'){app.innerHTML=`<div class="card"><div class="eyebrow">Gericht oefenen</div><h2>Extra oefenen</h2><p>Kies een les. Nog gesloten lessen kun je vrijblijvend testen zonder dat je voortgang verandert. Bij iedere poging krijg je nieuwe woorden. Vanaf les 2 komen er ook twee herhalingsvragen uit eerder behaalde lessen. Lastige woorden keren sneller terug.</p>${lessons.map((l,i)=>`<p><button class="btn ${i>0&&!state.passed.includes(i-1)?'secondary':''}" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}">${esc(l.title)} →</button></p>`).join('')}</div>`}else{let attempts=state.attempts;app.innerHTML=`<div class="card"><div class="eyebrow">Mijn ontwikkeling</div><h2>Voortgang</h2><p><strong>${state.passed.length}</strong> van de ${lessons.length} lessen behaald</p><p><strong>${attempts.length}</strong> toetsen gemaakt</p><p><strong>${attempts.length?Math.round(attempts.reduce((s,a)=>s+a.score,0)/attempts.length):0}%</strong> gemiddelde toetsscore</p><div class="bar"><div class="fill" style="width:${state.passed.length/lessons.length*100}%"></div></div><h3>Inzicht per les</h3><p class="muted">Op basis van officieel gemaakte toetsen en opgeslagen herhalingen. Proefrondes tellen niet mee.</p><div id="lessonInsights"></div><h3>Toetshistorie</h3>${attempts.slice(-8).reverse().map(a=>`<p class="muted">${esc(lessons[a.lesson].title)} · ${a.score}% · ${esc(a.date)}</p>`).join('')||'<p class="muted">Nog geen toetsen gemaakt.</p>'}</div>${cloudPanel()}<div class="card"><div class="eyebrow">Veiligstellen van je voortgang</div><p>Maak voor de eerste synchronisatie een back-up. Je voortgang blijft ook lokaal beschikbaar. Bewaar je back-up op een veilige plek. Met terugzetten vervang je de huidige voortgang.</p><div class="row" style="flex-wrap:wrap;justify-content:flex-start"><button class="btn" onclick="exportProgress()">Download back-up</button><button class="btn secondary" onclick="document.getElementById('progressBackup').click()">Herstel back-up</button><input id="progressBackup" type="file" accept=".json,application/json" style="display:none" onchange="importProgress(this)"></div><p class="foot">De code wordt via GitHub bewaard met versiegeschiedenis. Met een ingelogd account worden je leerresultaten online gesynchroniseerd.</p></div>`}}
