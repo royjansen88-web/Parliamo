@@ -1254,7 +1254,7 @@ function check(){
  }
  const firstTry=questionMistakes===0;
  answers.push({good:firstTry,corrected:!firstTry,expected:q.correct,got:v,type:q.type,reviewKey:q.reviewKey||null});
- if(q.reviewKey){
+ if(q.reviewKey&&!previewLesson){
   const prev=state.reviews[q.reviewKey]||{stage:0};
   const stage=firstTry?Math.min((prev.stage||0)+1,5):0;
   const days=[1,2,4,7,14,30][stage];
