@@ -521,9 +521,9 @@ function quizFor(n){
  }
  if(grammarExercises[n]){
   const g=shuffle([grammarExercises[n],...extraGrammarExercises[n]])[0];
-  qs[6]={type:'grammar',question:'Vul het ontbrekende Italiaanse woord in: '+g[0],correct:g[1],word:g[1],explanation:g[2]};
+  qs[6]={type:'grammar',question:'Vul het ontbrekende Italiaanse woord in: '+g[0],correct:g[1],word:g[1],explanation:g[2]+' Uitleg: '+grammarFoundations[n].rule};
   const sentence=shuffle(sentenceExercises[n])[0];
-  qs[5]={type:'sentence',question:'Schrijf de volledige zin in het Italiaans: '+sentence.dutch,correct:sentence.italian,word:sentence.italian,explanation:'Voorbeeldzin uit de les. Let op de woordvolgorde.'};
+  qs[5]={type:'sentence',question:'Schrijf de volledige zin in het Italiaans: '+sentence.dutch,correct:sentence.italian,word:sentence.italian,explanation:'Dit is een voorbeeldzin uit de les. Vergelijk de werkwoordsvorm en woordvolgorde. '+grammarFoundations[n].rule};
  }
  const listening=words[chosen[7]];
  const dialogue=shuffle([listeningDialogues[n],extraListeningDialogues[n]])[0];
@@ -1230,5 +1230,14 @@ function check(){
 }
 function next(){idx++;selection=null;spoken=false;questionMistakes=0;renderQuiz();window.scrollTo(0,0)}function finish(){let completedLesson=current;let wasPreview=previewLesson;previewLesson=false;let score=Math.round(answers.filter(a=>a.good).length/answers.length*100),speech=answers.filter(a=>a.type==='speak').every(a=>a.good),passed=score>=80&&speech;if(!wasPreview){state.attempts.push({lesson:current,lessonId:lessons[current].id,score,date:new Date().toLocaleDateString('nl-NL')});if(passed&&!state.passedIds.includes(lessons[current].id))state.passedIds.push(lessons[current].id);save();}app.innerHTML=`<div class="card"><div class="eyebrow">Toets afgerond</div><div class="big">${score}%</div><h2>${wasPreview?'Voorbeeldtoets afgerond':passed?'Les behaald!':'Nog even oefenen'}</h2><p>${wasPreview?'Dit was een proefronde. Je score is niet opgeslagen en er zijn geen lessen vrijgespeeld.':passed?'Je hebt de lesdoelen behaald. De volgende les is nu beschikbaar.':'Je hebt minimaal 80% nodig én beide spreekopdrachten moeten goed zijn. De volgende les blijft gesloten.'}</p>${!(window.SpeechRecognition||window.webkitSpeechRecognition)?'<p class="muted">Spreekvragen zijn hardop en schriftelijk geoefend. Uitspraak is niet automatisch beoordeeld.</p>':''}${answers.filter(a=>!a.good).length?`<h3>Extra aandacht voor</h3>${answers.filter(a=>!a.good).map(a=>`<span class="tag">${esc(a.expected)}</span>`).join('')}`:''}<p><button class="btn" onclick="current=null;tab='home';render();${wasPreview||passed?'':`start(${completedLesson});`}">${wasPreview||passed?'Terug naar overzicht':'Opnieuw oefenen'}</button></p></div>`;current=null}
 const oldRender=render;
-render=function(){oldRender();if(tab==='progress'&&current===null)renderLessonInsights()};
+render=function(){
+ try{
+  oldRender();
+  if(tab==='progress'&&current===null)renderLessonInsights();
+ }catch(error){
+  console.error('Parliamo kon deze pagina niet tonen:',error);
+  const target=document.getElementById('app');
+  if(target)target.innerHTML='<section class="card" role="alert"><div class="eyebrow">HERSTEL</div><h2>Deze pagina kon niet worden geladen</h2><p>Je opgeslagen leergegevens zijn niet verwijderd. Ga terug naar het startscherm en probeer het opnieuw.</p><button class="btn" type="button" onclick="current=null;previewLesson=false;exerciseMenu=\'main\';tab=\'home\';render()">Terug naar startscherm</button></section>';
+ }
+};
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{current=null;previewLesson=false;tab=b.dataset.tab;if(tab==='practice')exerciseMenu='main';render();b.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'})});render();</script></body></html>
