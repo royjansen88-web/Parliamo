@@ -90,12 +90,14 @@ function mergeProgress(local,remote){
  const a=normalizeProgress(local),b=normalizeProgress(remote);
  const attempts=[...a.attempts];
  for(const item of b.attempts){if(!attempts.some(x=>JSON.stringify(x)===JSON.stringify(item)))attempts.push(item)}
+ const oralExamResults=[...(Array.isArray(a.oralExamResults)?a.oralExamResults:[])];
+ for(const item of (Array.isArray(b.oralExamResults)?b.oralExamResults:[])){if(!oralExamResults.some(x=>x.id===item.id))oralExamResults.push(item)}
  const reviews={...b.reviews};
  for(const [id,record] of Object.entries(a.reviews)){
   const other=reviews[id];
   if(!other||Date.parse(record?.lastSeen||0)>=Date.parse(other?.lastSeen||0))reviews[id]=record;
  }
- return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews});
+ return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews,oralExamResults});
 }
 function cloudStatus(message){cloudMessage=message;const el=document.getElementById('cloudStatus');if(el)el.textContent=message}
 function cloudError(e){cloudStatus('Synchronisatie mislukt: '+(e.message||e));}
@@ -559,10 +561,78 @@ function startFinalExam(){
  }
  examItems=shuffle(selected);examIndex=0;examAnswers=[];examDone=false;renderFinalExam();
 }
+
+const oralScenes=[
+ {title:'In het restaurant',role:'ober',turns:[
+ ['Buonasera! Avete prenotato un tavolo?',['si','no','tavolo','prenot','due','persona']],
+ ['Per quante persone?',['due','tre','quattro','persona','siamo','per']],
+ ['Che cosa desidera da bere?',['acqua','vino','birra','succo','vorrei','prendo']],
+ ['Che cosa vuole mangiare?',['pizza','pasta','insalata','pesce','vorrei','prendo']],
+ ['Desidera anche un dolce?',['si','no','dolce','gelato','grazie']],
+ ['Come vuole pagare?',['carta','contanti','pago','pagare','con']]]},
+ {title:'In het hotel',role:'receptionist',turns:[
+ ['Buongiorno! Ha una prenotazione?',['si','no','prenot','camera','nome']],
+ ['Come si chiama?',['chiamo','sono','nome']],
+ ['Per quante notti rimane?',['notte','due','tre','quattro','una']],
+ ['A che ora vuole fare colazione?',['otto','nove','sette','alle','colazione']],
+ ['Ha bisogno del Wi-Fi?',['si','no','wifi','grazie','password']],
+ ['Ha altre domande?',['no','grazie','dove','quando','si']]]},
+ {title:'Op straat',role:'voorbijganger',turns:[
+ ['Ciao! Come ti chiami?',['chiamo','sono','nome']],
+ ['Di dove sei?',['olanda','paesi bassi','olandese','vengo','sono']],
+ ['Sei qui in vacanza?',['si','no','vacanza','viaggio']],
+ ['Che cosa vuoi visitare oggi?',['museo','centro','spiaggia','castello','vorrei','voglio']],
+ ['Ti piace la cucina italiana?',['si','no','piace','pizza','pasta']],
+ ['Come vai in centro?',['piedi','autobus','macchina','taxi','treno','vado']]]}
+];
+let oralScene=-1,oralIndex=0,oralAnswers=[],oralListening=false,oralRecognition=null,oralError='';
+function oralStop(){if(oralRecognition){try{oralRecognition.abort()}catch(e){}oralRecognition=null}oralListening=false}
+function oralStart(n){oralStop();oralScene=n;oralIndex=0;oralAnswers=[];oralError='';renderOralExam()}
+function oralRecognize(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){oralError='Spraakherkenning is niet beschikbaar in deze browser. Je kunt het antwoord typen.';renderOralExam();return}
+ oralStop();const rec=new SR();oralRecognition=rec;rec.lang='it-IT';rec.interimResults=false;rec.maxAlternatives=1;oralListening=true;oralError='';renderOralExam();
+ rec.onresult=e=>{if(oralRecognition!==rec)return;oralListening=false;oralRecognition=null;const field=document.getElementById('oralAnswer');if(field)field.value=e.results[0][0].transcript;const status=document.getElementById('oralStatus');if(status)status.textContent='Controleer de herkende tekst en ga verder.'};
+ rec.onerror=e=>{if(oralRecognition!==rec)return;oralListening=false;oralRecognition=null;oralError='Microfoon niet beschikbaar ('+e.error+'). Je kunt typen.';const status=document.getElementById('oralStatus');if(status)status.textContent=oralError};
+ rec.onend=()=>{if(oralRecognition===rec){oralListening=false;oralRecognition=null;const status=document.getElementById('oralStatus');if(status)status.textContent='Opname gestopt. Probeer opnieuw of typ je antwoord.'}};
+ try{rec.start()}catch(e){oralListening=false;oralRecognition=null;oralError='Microfoon kon niet starten.';renderOralExam()}
+}
+function oralSubmit(){
+ const input=document.getElementById('oralAnswer'),answer=input?.value.trim();if(!answer){alert('Spreek of typ eerst een antwoord.');return}
+ const scene=oralScenes[oralScene],keywords=scene.turns[oralIndex][1];
+ const normalized=norm(answer);
+ const relevant=keywords.some(k=>normalized.includes(norm(k)));
+ oralAnswers.push({question:scene.turns[oralIndex][0],answer,relevant});
+ oralStop();oralIndex++;renderOralExam();
+}
+function oralFinish(){
+ const scene=oralScenes[oralScene],relevant=oralAnswers.filter(a=>a.relevant).length,score=Math.round(relevant/oralAnswers.length*100);
+ const record={id:Date.now().toString(36),date:new Date().toLocaleDateString('nl-NL'),scene:scene.title,score,answers:oralAnswers,method:'keyword-indication'};
+ if(!Array.isArray(state.oralExamResults))state.oralExamResults=[];
+ state.oralExamResults.push(record);save();return record;
+}
+function renderOralExam(){
+ if(oralScene<0){
+  const history=Array.isArray(state.oralExamResults)?state.oralExamResults:[];
+  app.innerHTML='<div class="card"><div class="eyebrow">Mondeling oefenen · A1</div><h2>Praat Italiaans</h2><p>Voer zes gespreksbeurten in een herkenbare situatie. De browser spreekt Italiaans en kan je antwoord via de microfoon herkennen.</p><p class="muted">De automatische score is alleen een grove inhoudsindicatie op basis van sleutelwoorden. Uitspraak, grammaticale correctheid en echte gespreksvaardigheid worden niet betrouwbaar beoordeeld.</p>'+oralScenes.map((x,i)=>'<p><button class="btn" onclick="oralStart('+i+')">'+esc(x.title)+'</button></p>').join('')+(history.length?'<h3>Eerdere gesprekken</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+esc(x.scene)+' · '+x.score+'% (indicatie)</p>').join(''):'')+'</div><div class="card"><h2>Vrij gesprek met ChatGPT</h2><p>Start een voorbereid A1-rollenspel en schakel in ChatGPT over naar spraak. Na afloop kun je de feedback zelf bespreken; er is geen automatische terugkoppeling naar Parliamo.</p><button class="btn secondary" onclick="openOralChatGPT()">Open ChatGPT-rollenspel ↗</button><p class="muted">ChatGPT opent in een nieuw venster. Mogelijk moet je de exameninstructie plakken en daarna de spraakfunctie starten.</p></div>';return;
+ }
+ const scene=oralScenes[oralScene];
+ if(oralIndex>=scene.turns.length){
+  const result=oralFinish();oralScene=-1;
+  app.innerHTML='<div class="card"><div class="eyebrow">Gesprek afgerond</div><h2>'+esc(result.scene)+'</h2><div class="big">'+result.score+'%</div><p>'+result.answers.filter(a=>a.relevant).length+' van '+result.answers.length+' antwoorden bevatten een passend sleutelwoord.</p><p class="muted">Dit is geen uitspraakscore of betrouwbaar A1-examencijfer. Bekijk je antwoorden en oefen opnieuw.</p>'+result.answers.map(a=>'<p><strong>'+esc(a.question)+'</strong><br>'+esc(a.answer)+' · '+(a.relevant?'inhoudelijk herkenbaar':'niet herkend')+'</p>').join('')+'<button class="btn" onclick="renderOralExam()">Terug naar mondeling</button></div>';return;
+ }
+ const q=scene.turns[oralIndex][0];
+ app.innerHTML='<div class="card"><div class="eyebrow">'+esc(scene.title)+' · '+(oralIndex+1)+' / '+scene.turns.length+'</div><div class="bar"><div class="fill" style="width:'+(oralIndex/scene.turns.length*100)+'%"></div></div><h2>'+esc(q)+'</h2><p><button class="btn secondary" onclick="speak(oralScenes[oralScene].turns[oralIndex][0])">▶ Luister naar de vraag</button></p><p><button class="btn secondary" onclick="oralRecognize()">🎙 Spreek je antwoord in</button></p><p id="oralStatus" class="muted">'+(oralListening?'Microfoon luistert…':esc(oralError||'Je kunt ook typen als de microfoon niet werkt.'))+'</p><input id="oralAnswer" type="text" lang="it" autocomplete="off" placeholder="Jouw Italiaanse antwoord"><p><button class="btn" onclick="oralSubmit()">Volgende vraag →</button> <button class="btn secondary" onclick="oralStop();oralScene=-1;renderOralExam()">Stop</button></p><p class="muted">Geen vertaling of hints tijdens het gesprek.</p></div>';
+}
+function openOralChatGPT(){
+ const instruction='Je bent een vriendelijke Italiaanse A1-examinator. Voer een spontaan mondeling examen in het Italiaans. Speel achtereenvolgens een ober, hotelreceptionist en voorbijganger. Stel steeds één korte Italiaanse vraag, wacht op mijn gesproken antwoord en pas je vervolgvragen natuurlijk aan. Geef geen Nederlandse vertalingen of antwoorden tijdens het examen. Na ongeveer 12 vragen geef je in het Nederlands feedback over begrip, woordenschat, grammatica en interactie. Wees duidelijk dat dit geen officieel examen is.';
+ navigator.clipboard?.writeText(instruction).then(()=>alert('Exameninstructie gekopieerd. Plak deze in ChatGPT en start de spraakfunctie.')).catch(()=>{});
+ window.open('https://chatgpt.com/','_blank','noopener,noreferrer');
+}
 function renderFinalExam(){
  if(examIndex<0){
   const history=Array.isArray(state.finalExamResults)?state.finalExamResults:[];
-  app.innerHTML='<div class="card"><div class="eyebrow">A1-eindexamen</div><h2>40 vragen · vier onderdelen</h2><p>10 vragen woordenschat, 10 grammatica, 10 schrijven en 10 luisteren. Je krijgt geen hints of directe correcties. Pas na afloop zie je je resultaat.</p><p class="muted">Dit is een indicatieve A1-toets, geen erkend taalexamen. Spontaan spreken wordt hiermee niet betrouwbaar beoordeeld.</p><p>'+state.passed.length+' van 24 lessen behaald. '+(state.passed.length===24?'Je kunt het examen starten.':'Het examen wordt beschikbaar na alle 24 lessen.')+'</p><button class="btn" '+(state.passed.length===24?'':'disabled')+' onclick="startFinalExam()">Start A1-eindexamen</button>'+(history.length?'<h3>Eerdere resultaten</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+x.score+'%</p>').join(''):'')+'</div>';return;
+  app.innerHTML='<div class="card"><div class="eyebrow">A1-eindexamen</div><h2>40 vragen · vier onderdelen</h2><p>10 vragen woordenschat, 10 grammatica, 10 schrijven en 10 luisteren. Je krijgt geen hints of directe correcties. Pas na afloop zie je je resultaat.</p><p class="muted">Dit is een indicatieve A1-toets, geen erkend taalexamen. Spontaan spreken wordt hiermee niet betrouwbaar beoordeeld.</p><p>'+state.passed.length+' van 24 lessen behaald. '+(state.passed.length===24?'Je kunt het examen starten.':'Het examen wordt beschikbaar na alle 24 lessen.')+'</p><button class="btn" '+(state.passed.length===24?'':'disabled')+' onclick="startFinalExam()">Start A1-eindexamen</button>'+(history.length?'<h3>Eerdere resultaten</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+x.score+'%</p>').join(''):'')+'</div><div class="card"><h2>Mondeling praktijkexamen</h2><p>Oefen met je microfoon of start een vrij gesprek met ChatGPT. Geen extra API-kosten.</p><button class="btn secondary" onclick="renderOralExam()">Open mondeling examen →</button></div>';return;
  }
  if(examIndex>=examItems.length){
   if(!examDone){
