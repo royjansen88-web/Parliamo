@@ -61,7 +61,100 @@ function normalizeProgress(raw){
  const attempts=Array.isArray(p.attempts)?p.attempts.filter(a=>a&&typeof a==='object').map(a=>({...a,lessonId:a.lessonId||idOf(a.lesson)})):[];
  return {...p,schemaVersion:STORAGE_VERSION,passedIds:ids,passed:ids.map(id=>lessons.findIndex(l=>l.id===id)).filter(n=>n>=0),attempts,reviews:p.reviews&&typeof p.reviews==='object'?p.reviews:{},name:typeof p.name==='string'?p.name:''};
 }
-let state;try{state=normalizeProgress(JSON.parse(localStorage.getItem(key)))}catch{state=normalizeProgress({})}let tab='home',current=null,idx=0,answers=[],selection=null,spoken=false,feedback=null;const app=document.getElementById('app');const save=()=>{state=normalizeProgress(state);localStorage.setItem(key,JSON.stringify(state))};
+let state;try{state=normalizeProgress(JSON.parse(localStorage.getItem(key)))}catch{state=normalizeProgress({})}let tab='home',current=null,idx=0,answers=[],selection=null,spoken=false,feedback=null;const app=document.getElementById('app');const save=()=>{state=normalizeProgress(state);localStorage.setItem(key,JSON.stringify(state));scheduleCloudSave()};
+const SUPABASE_URL='https://pkrhtkgwgogmeuxqvijy.supabase.co';
+const SUPABASE_KEY='sb_publishable_Y_gPXXCBty_BxlVRLECbQw_ks-6JoU7';
+const CLOUD_SESSION_KEY='parliamo-cloud-session';
+let cloudSession=null,cloudTimer=null,cloudBusy=false,cloudReady=false,cloudMessage='Niet verbonden';
+try{cloudSession=JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY)||'null')}catch{}
+function cloudHeaders(token){return {'apikey':SUPABASE_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'}}
+async function cloudRequest(path,options={}){
+ const response=await fetch(SUPABASE_URL+path,{...options,headers:{...cloudHeaders(cloudSession?.access_token||SUPABASE_KEY),...(options.headers||{})}});
+ const body=await response.json().catch(()=>null);
+ if(!response.ok)throw Error(body?.msg||body?.error_description||body?.message||'Serverfout '+response.status);
+ return body;
+}
+async function cloudRefresh(){
+ if(!cloudSession?.refresh_token)throw Error('Log opnieuw in.');
+ const response=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:cloudHeaders(SUPABASE_KEY),body:JSON.stringify({refresh_token:cloudSession.refresh_token})});
+ const body=await response.json().catch(()=>({}));
+ if(!response.ok)throw Error(body.msg||body.error_description||'Sessie verlopen. Log opnieuw in.');
+ cloudSession=body;localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(body));
+}
+async function cloudEnsureSession(){
+ if(!cloudSession)return false;
+ if(Date.now()/1000>(cloudSession.expires_at||0)-90)await cloudRefresh();
+ return true;
+}
+function mergeProgress(local,remote){
+ const a=normalizeProgress(local),b=normalizeProgress(remote);
+ const attempts=[...a.attempts];
+ for(const item of b.attempts){if(!attempts.some(x=>JSON.stringify(x)===JSON.stringify(item)))attempts.push(item)}
+ const reviews={...b.reviews};
+ for(const [id,record] of Object.entries(a.reviews)){
+  const other=reviews[id];
+  if(!other||Date.parse(record?.lastSeen||0)>=Date.parse(other?.lastSeen||0))reviews[id]=record;
+ }
+ return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews});
+}
+function cloudStatus(message){cloudMessage=message;const el=document.getElementById('cloudStatus');if(el)el.textContent=message}
+function cloudError(e){cloudStatus('Synchronisatie mislukt: '+(e.message||e));}
+function scheduleCloudSave(){
+ if(!cloudSession||!cloudReady)return;
+ clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>cloudSync(true),1200);
+}
+async function cloudSync(uploadOnly=false){
+ if(!cloudSession||cloudBusy)return;
+ cloudBusy=true;cloudStatus('Synchroniseren…');
+ try{
+  await cloudEnsureSession();
+  const userId=cloudSession.user?.id;
+  if(!userId)throw Error('Accountgegevens ontbreken. Log opnieuw in.');
+  const rows=await cloudRequest('/rest/v1/parliamo_progress?user_id=eq.'+encodeURIComponent(userId)+'&select=progress',{headers:{'Accept':'application/json'}});
+  if(!Array.isArray(rows))throw Error('Onverwacht antwoord van database.');
+  const combined=rows.length?mergeProgress(state,rows[0].progress):normalizeProgress(state);
+  const response=await fetch(SUPABASE_URL+'/rest/v1/parliamo_progress?on_conflict=user_id',{method:'POST',headers:{...cloudHeaders(cloudSession.access_token),'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:userId,progress:combined,updated_at:new Date().toISOString()})});
+  if(!response.ok){const body=await response.json().catch(()=>({}));throw Error(body.message||'Opslaan mislukt ('+response.status+'). Controleer of de SQL is uitgevoerd.')}
+  state=combined;localStorage.setItem(key,JSON.stringify(state));
+  cloudReady=true;cloudStatus('Gesynchroniseerd · '+new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'}));
+  if(!uploadOnly&&current===null)render();
+ }catch(e){cloudError(e)}
+ finally{cloudBusy=false}
+}
+async function cloudSignIn(){
+ const email=document.getElementById('cloudEmail')?.value.trim(),password=document.getElementById('cloudPassword')?.value;
+ if(!email||!password){cloudStatus('Vul e-mailadres en wachtwoord in.');return}
+ cloudStatus('Inloggen…');
+ try{
+  const response=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:cloudHeaders(SUPABASE_KEY),body:JSON.stringify({email,password})});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(body.msg||body.error_description||'Inloggen mislukt.');
+  cloudSession=body;cloudReady=false;localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(body));
+  await cloudSync();render();
+ }catch(e){cloudError(e)}
+}
+async function cloudSignUp(){
+ const email=document.getElementById('cloudEmail')?.value.trim(),password=document.getElementById('cloudPassword')?.value;
+ if(!email||!password||password.length<8){cloudStatus('Vul een e-mailadres en wachtwoord van minimaal 8 tekens in.');return}
+ cloudStatus('Account aanmaken…');
+ try{
+  const response=await fetch(SUPABASE_URL+'/auth/v1/signup',{method:'POST',headers:cloudHeaders(SUPABASE_KEY),body:JSON.stringify({email,password})});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(body.msg||body.error_description||'Registreren mislukt.');
+  if(body.access_token){cloudSession=body;localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(body));await cloudSync();render()}
+  else cloudStatus('Account aangemaakt. Controleer je e-mail voor de bevestigingslink en log daarna in.');
+ }catch(e){cloudError(e)}
+}
+function cloudSignOut(){
+ clearTimeout(cloudTimer);cloudSession=null;cloudReady=false;localStorage.removeItem(CLOUD_SESSION_KEY);cloudStatus('Uitgelogd. Je lokale voortgang blijft bewaard.');render();
+}
+function cloudPanel(){
+ return '<div class="card"><div class="eyebrow">Synchronisatie tussen apparaten</div><h2>Mijn Parliamo-account</h2>'+(cloudSession?'<p>Ingelogd als <strong>'+esc(cloudSession.user?.email||'gebruiker')+'</strong>.</p><p>Je voortgang wordt op dit apparaat bewaard en automatisch naar je account gesynchroniseerd.</p><p><button class="btn" onclick="cloudSync()">Nu synchroniseren</button> <button class="btn secondary" onclick="cloudSignOut()">Uitloggen</button></p>':'<p>Log op je computer en telefoon in met hetzelfde account. Je bestaande lessen worden bij de eerste synchronisatie samengevoegd.</p><input id="cloudEmail" type="email" placeholder="E-mailadres" autocomplete="email" style="width:100%;padding:12px;margin:5px 0"><input id="cloudPassword" type="password" placeholder="Wachtwoord (minimaal 8 tekens)" autocomplete="current-password" style="width:100%;padding:12px;margin:5px 0"><p><button class="btn" onclick="cloudSignIn()">Inloggen</button> <button class="btn secondary" onclick="cloudSignUp()">Account aanmaken</button></p><p class="foot">Na registratie moet je mogelijk eerst je e-mailadres bevestigen. Gebruik nooit je Supabase-databasewachtwoord om hier in te loggen.</p>')+'<p class="muted" id="cloudStatus" role="status">'+esc(cloudMessage)+'</p></div>';
+}
+window.addEventListener('online',()=>{if(cloudSession)cloudSync()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudSession)cloudSync()});
+setTimeout(()=>{if(cloudSession)cloudSync()},600);
+
 function exportProgress(){
  const payload={app:'Parliamo',formatVersion:1,exportedAt:new Date().toISOString(),state};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
@@ -411,7 +504,7 @@ function checkSkill(){
  result.dataset.checked='yes';
  result.innerHTML='<div class="feedback '+(good?'':'bad')+'">'+(good?'Goed!':'Niet helemaal.')+' Juiste antwoord: <strong>'+esc(x.a)+'</strong></div><button class="btn" onclick="skillIndex++;renderSkill()">Volgende →</button>';
 }
-function render(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(current!==null){renderQuiz();return}if(tab==='home'){let p=state.passed.length;app.innerHTML=`<div class="card"><div class="eyebrow">Jouw leerroute · pre-A1 en A1</div><div class="row"><div><div class="big">${p}/${lessons.length}</div><div class="muted">lessen behaald</div></div><span class="pill">${p===lessons.length?'Module afgerond':'Startniveau'}</span></div><div class="bar"><div class="fill" style="width:${p/lessons.length*100}%"></div></div><p class="muted">Een les is behaald bij minimaal 80% en beide spreekopdrachten afgerond. Je kunt alle lessen alvast bekijken en testen; een voorbeeldtoets telt niet mee voor je voortgang.</p></div><div class="card"><div class="eyebrow">Lessen</div><div class="grid">${lessons.map((l,i)=>`<button class="lesson" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}"><span class="pill">${state.passed.includes(i)?'✓ Behaald':i>0&&!state.passed.includes(i-1)?'Voorbeeld bekijken':'Beschikbaar'}</span><strong>${i+1}. ${esc(l.title)}</strong><small>${esc(l.goal)}</small></button>`).join('')}</div></div><div class="card"><div class="eyebrow">Werkwijze</div><p>Lees de uitleg, beluister woorden en maak 10 toetsvragen. Vanaf les 2 herhaal je automatisch twee woorden uit eerdere behaalde lessen. Fouten keren sneller terug.</p></div>`}else if(tab==='words'){let available=lessons;app.innerHTML=`<div class="card"><div class="eyebrow">Woordentrainer</div><h2>Luister, leer en herhaal</h2><p class="muted">${available.length*20} woorden beschikbaar. Tik op het luidsprekertje om de Italiaanse uitspraak te horen.</p><select id="wl" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${available.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><div id="wordlist"></div></div><div class="card"><h2>Zoek in alle 480 woorden</h2><input id="wordSearch" type="search" placeholder="Zoek Italiaans of Nederlands" oninput="searchWords()" style="width:100%;padding:12px;border:1px solid #cad8cf;border-radius:10px"><div id="wordSearchResults"><p class="muted">Typ minimaal twee letters.</p></div></div>`;document.getElementById('wl').onchange=wordlist;wordlist();app.insertAdjacentHTML('beforeend',audioSettings())}else if(tab==='skills'){renderSkills();}else if(tab==='review'){renderReview();}else if(tab==='diagnostic'){renderDiagnostic();}else if(tab==='writing'){renderWriting();}else if(tab==='conversation'){renderConversation();}else if(tab==='practice'){app.innerHTML=`<div class="card"><div class="eyebrow">Gericht oefenen</div><h2>Extra oefenen</h2><p>Kies een les. Nog gesloten lessen kun je vrijblijvend testen zonder dat je voortgang verandert. Bij iedere poging krijg je nieuwe woorden. Vanaf les 2 komen er ook twee herhalingsvragen uit eerder behaalde lessen. Lastige woorden keren sneller terug.</p>${lessons.map((l,i)=>`<p><button class="btn ${i>0&&!state.passed.includes(i-1)?'secondary':''}" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}">${esc(l.title)} →</button></p>`).join('')}</div>`}else{let attempts=state.attempts;app.innerHTML=`<div class="card"><div class="eyebrow">Mijn ontwikkeling</div><h2>Voortgang</h2><p><strong>${state.passed.length}</strong> van de ${lessons.length} lessen behaald</p><p><strong>${attempts.length}</strong> toetsen gemaakt</p><p><strong>${attempts.length?Math.round(attempts.reduce((s,a)=>s+a.score,0)/attempts.length):0}%</strong> gemiddelde toetsscore</p><div class="bar"><div class="fill" style="width:${state.passed.length/lessons.length*100}%"></div></div><h3>Inzicht per les</h3><p class="muted">Op basis van officieel gemaakte toetsen en opgeslagen herhalingen. Proefrondes tellen niet mee.</p><div id="lessonInsights"></div><h3>Toetshistorie</h3>${attempts.slice(-8).reverse().map(a=>`<p class="muted">${esc(lessons[a.lesson].title)} · ${a.score}% · ${esc(a.date)}</p>`).join('')||'<p class="muted">Nog geen toetsen gemaakt.</p>'}</div><div class="card"><div class="eyebrow">Veiligstellen van je voortgang</div><p>Je voortgang staat nu in deze browser. Maak regelmatig een back-up en bewaar die op een veilige plek. Met terugzetten vervang je de huidige voortgang.</p><div class="row" style="flex-wrap:wrap;justify-content:flex-start"><button class="btn" onclick="exportProgress()">Download back-up</button><button class="btn secondary" onclick="document.getElementById('progressBackup').click()">Herstel back-up</button><input id="progressBackup" type="file" accept=".json,application/json" style="display:none" onchange="importProgress(this)"></div><p class="foot">De code wordt via GitHub bewaard met versiegeschiedenis. Je leerresultaten worden nog niet online gesynchroniseerd.</p></div>`}}
+function render(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(current!==null){renderQuiz();return}if(tab==='home'){let p=state.passed.length;app.innerHTML=`<div class="card"><div class="eyebrow">Jouw leerroute · pre-A1 en A1</div><div class="row"><div><div class="big">${p}/${lessons.length}</div><div class="muted">lessen behaald</div></div><span class="pill">${p===lessons.length?'Module afgerond':'Startniveau'}</span></div><div class="bar"><div class="fill" style="width:${p/lessons.length*100}%"></div></div><p class="muted">Een les is behaald bij minimaal 80% en beide spreekopdrachten afgerond. Je kunt alle lessen alvast bekijken en testen; een voorbeeldtoets telt niet mee voor je voortgang.</p></div><div class="card"><div class="eyebrow">Lessen</div><div class="grid">${lessons.map((l,i)=>`<button class="lesson" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}"><span class="pill">${state.passed.includes(i)?'✓ Behaald':i>0&&!state.passed.includes(i-1)?'Voorbeeld bekijken':'Beschikbaar'}</span><strong>${i+1}. ${esc(l.title)}</strong><small>${esc(l.goal)}</small></button>`).join('')}</div></div><div class="card"><div class="eyebrow">Werkwijze</div><p>Lees de uitleg, beluister woorden en maak 10 toetsvragen. Vanaf les 2 herhaal je automatisch twee woorden uit eerdere behaalde lessen. Fouten keren sneller terug.</p></div>`}else if(tab==='words'){let available=lessons;app.innerHTML=`<div class="card"><div class="eyebrow">Woordentrainer</div><h2>Luister, leer en herhaal</h2><p class="muted">${available.length*20} woorden beschikbaar. Tik op het luidsprekertje om de Italiaanse uitspraak te horen.</p><select id="wl" style="padding:12px;border-radius:10px;width:100%;margin-bottom:12px">${available.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l.title)}</option>`).join('')}</select><div id="wordlist"></div></div><div class="card"><h2>Zoek in alle 480 woorden</h2><input id="wordSearch" type="search" placeholder="Zoek Italiaans of Nederlands" oninput="searchWords()" style="width:100%;padding:12px;border:1px solid #cad8cf;border-radius:10px"><div id="wordSearchResults"><p class="muted">Typ minimaal twee letters.</p></div></div>`;document.getElementById('wl').onchange=wordlist;wordlist();app.insertAdjacentHTML('beforeend',audioSettings())}else if(tab==='skills'){renderSkills();}else if(tab==='review'){renderReview();}else if(tab==='diagnostic'){renderDiagnostic();}else if(tab==='writing'){renderWriting();}else if(tab==='conversation'){renderConversation();}else if(tab==='practice'){app.innerHTML=`<div class="card"><div class="eyebrow">Gericht oefenen</div><h2>Extra oefenen</h2><p>Kies een les. Nog gesloten lessen kun je vrijblijvend testen zonder dat je voortgang verandert. Bij iedere poging krijg je nieuwe woorden. Vanaf les 2 komen er ook twee herhalingsvragen uit eerder behaalde lessen. Lastige woorden keren sneller terug.</p>${lessons.map((l,i)=>`<p><button class="btn ${i>0&&!state.passed.includes(i-1)?'secondary':''}" onclick="${i>0&&!state.passed.includes(i-1)?`startPreview(${i})`:`start(${i})`}">${esc(l.title)} →</button></p>`).join('')}</div>`}else{let attempts=state.attempts;app.innerHTML=`<div class="card"><div class="eyebrow">Mijn ontwikkeling</div><h2>Voortgang</h2><p><strong>${state.passed.length}</strong> van de ${lessons.length} lessen behaald</p><p><strong>${attempts.length}</strong> toetsen gemaakt</p><p><strong>${attempts.length?Math.round(attempts.reduce((s,a)=>s+a.score,0)/attempts.length):0}%</strong> gemiddelde toetsscore</p><div class="bar"><div class="fill" style="width:${state.passed.length/lessons.length*100}%"></div></div><h3>Inzicht per les</h3><p class="muted">Op basis van officieel gemaakte toetsen en opgeslagen herhalingen. Proefrondes tellen niet mee.</p><div id="lessonInsights"></div><h3>Toetshistorie</h3>${attempts.slice(-8).reverse().map(a=>`<p class="muted">${esc(lessons[a.lesson].title)} · ${a.score}% · ${esc(a.date)}</p>`).join('')||'<p class="muted">Nog geen toetsen gemaakt.</p>'}</div>${cloudPanel()}<div class="card"><div class="eyebrow">Veiligstellen van je voortgang</div><p>Maak voor de eerste synchronisatie een back-up. Je voortgang blijft ook lokaal beschikbaar. Bewaar je back-up op een veilige plek. Met terugzetten vervang je de huidige voortgang.</p><div class="row" style="flex-wrap:wrap;justify-content:flex-start"><button class="btn" onclick="exportProgress()">Download back-up</button><button class="btn secondary" onclick="document.getElementById('progressBackup').click()">Herstel back-up</button><input id="progressBackup" type="file" accept=".json,application/json" style="display:none" onchange="importProgress(this)"></div><p class="foot">De code wordt via GitHub bewaard met versiegeschiedenis. Met een ingelogd account worden je leerresultaten online gesynchroniseerd.</p></div>`}}
 let reviewSession=[],reviewIndex=0,reviewRevealed=false,reviewMistakes=0;
 function reviewCandidates(){
  const now=Date.now(),pool=[];
