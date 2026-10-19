@@ -657,7 +657,7 @@ function renderOralExam(){
  if(oralScene<0){
   const history=Array.isArray(state.oralExamResults)?state.oralExamResults:[];
   const last=history.at(-1);
-  app.innerHTML='<div class="card"><div class="eyebrow">Mondeling oefenen · A1</div><h2>Praat Italiaans</h2><p>Zes vragen per situatie. De gesprekspartner reageert op bepaalde antwoorden en accepteert meerdere gebruikelijke formuleringen.</p><p class="muted">De beoordeling is nog steeds een beperkte inhoudsindicatie. Uitspraak en vrije grammatica worden niet betrouwbaar beoordeeld.</p>'+oralScenes.map((x,i)=>'<p><button class="btn" onclick="oralStart('+i+')">'+esc(x.title)+'</button></p>').join('')+(last&&last.answers?.some(a=>!a.relevant)?'<p><button class="btn secondary" onclick="oralLast=state.oralExamResults.at(-1);oralRepeatMissed()">Oefen gemiste antwoorden opnieuw</button></p>':'')+(history.length?'<h3>Eerdere gesprekken</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+esc(x.scene)+' · '+x.score+'% '+(x.retry?'(herkansing)':'')+'</p>').join(''):'')+'</div><div class="card"><h2>Vrij gesprek met ChatGPT</h2><p>Open een voorbereid A1-rollenspel en schakel in ChatGPT over naar spraak. Er is geen automatische terugkoppeling naar Parliamo.</p><button class="btn secondary" onclick="openOralChatGPT()">Open ChatGPT-rollenspel ↗</button><p class="muted">Plak indien nodig de gekopieerde exameninstructie en start daarna de spraakfunctie.</p></div>';return;
+  app.innerHTML='<div class="card"><div class="eyebrow">Mondeling oefenen · A1</div><h2>Praat Italiaans</h2><p>Zes vragen per situatie. De gesprekspartner reageert op bepaalde antwoorden en accepteert meerdere gebruikelijke formuleringen.</p><p class="muted">De beoordeling is nog steeds een beperkte inhoudsindicatie. Uitspraak en vrije grammatica worden niet betrouwbaar beoordeeld.</p>'+oralScenes.map((x,i)=>'<p><button class="btn" onclick="oralStart('+i+')">'+esc(x.title)+'</button></p>').join('')+(last&&last.answers?.some(a=>!a.relevant)?'<p><button class="btn secondary" onclick="oralLast=state.oralExamResults.at(-1);oralRepeatMissed()">Oefen gemiste antwoorden opnieuw</button></p>':'')+(history.length?'<h3>Eerdere gesprekken</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+esc(x.scene)+' · '+x.score+'% '+(x.retry?'(herkansing)':'')+'</p>').join(''):'')+'</div><div class="card"><h2>Vrij gesprek met ChatGPT</h2><p>Open een voorbereid A1-rollenspel en schakel in ChatGPT over naar spraak. Er is geen automatische terugkoppeling naar Parliamo.</p><button class="btn secondary" onclick="openOralChatGPT()">Start ChatGPT-rollenspel →</button><div id="oralChatPanel" hidden></div></div>';return;
  }
  const scene=oralScenes[oralScene],total=oralRetry?oralRetryItems.length:scene.turns.length;
  if(oralIndex>=total){
@@ -667,10 +667,26 @@ function renderOralExam(){
  const q=oralQuestion();
  app.innerHTML='<div class="card"><div class="eyebrow">'+esc(scene.title)+(oralRetry?' · herkansing':'')+' · '+(oralIndex+1)+' / '+total+'</div><div class="bar"><div class="fill" style="width:'+(oralIndex/total*100)+'%"></div></div><h2>'+esc(q.question)+'</h2><p><button class="btn secondary" onclick="speak(oralQuestion().question)">▶ Luister naar de vraag</button></p><p><button class="btn secondary" onclick="oralRecognize()">🎙 Spreek je antwoord in</button></p><p id="oralStatus" class="muted">'+(oralListening?'Microfoon luistert…':esc(oralError||'Je kunt ook typen als de microfoon niet werkt.'))+'</p><input id="oralAnswer" type="text" lang="it" autocomplete="off" placeholder="Jouw Italiaanse antwoord"><p><button class="btn" onclick="oralSubmit()">Volgende vraag →</button> <button class="btn secondary" onclick="oralStop();oralScene=-1;renderOralExam()">Stop</button></p><p class="muted">Geen vertaling of hints tijdens het gesprek.</p></div>';
 }
+
+const oralChatPrompt='Je bent een vriendelijke Italiaanse A1-examinator. Voer een spontaan mondeling examen in het Italiaans. Speel achtereenvolgens een ober, hotelreceptionist en voorbijganger. Stel steeds één korte Italiaanse vraag, wacht op mijn gesproken antwoord en pas je vervolgvragen natuurlijk aan. Geef geen Nederlandse vertalingen of antwoorden tijdens het examen. Na ongeveer 12 vragen geef je in het Nederlands feedback over begrip, woordenschat, grammatica en interactie. Wees duidelijk dat dit geen officieel examen is.';
 function openOralChatGPT(){
- const instruction='Je bent een vriendelijke Italiaanse A1-examinator. Voer een spontaan mondeling examen in het Italiaans. Speel achtereenvolgens een ober, hotelreceptionist en voorbijganger. Stel steeds één korte Italiaanse vraag, wacht op mijn gesproken antwoord en pas je vervolgvragen natuurlijk aan. Geef geen Nederlandse vertalingen of antwoorden tijdens het examen. Na ongeveer 12 vragen geef je in het Nederlands feedback over begrip, woordenschat, grammatica en interactie. Wees duidelijk dat dit geen officieel examen is.';
- navigator.clipboard?.writeText(instruction).then(()=>alert('Exameninstructie gekopieerd. Plak deze in ChatGPT en start de spraakfunctie.')).catch(()=>{});
- window.open('https://chatgpt.com/','_blank','noopener,noreferrer');
+ const panel=document.getElementById('oralChatPanel');
+ if(!panel)return;
+ panel.hidden=false;
+ panel.innerHTML='<h3>Stap 1 · Kopieer de exameninstructie</h3><p>Deze tekst vertelt ChatGPT hoe het mondelinge examen moet verlopen.</p><textarea id="oralChatPrompt" readonly rows="7" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px">'+esc(oralChatPrompt)+'</textarea><p><button class="btn" onclick="copyOralChatPrompt()">Kopieer instructie</button></p><h3>Stap 2 · Open ChatGPT</h3><p>Plak de tekst in een nieuw gesprek en verstuur hem. Start daarna de spraakfunctie in ChatGPT.</p><p><a class="btn secondary" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">Open ChatGPT ↗</a></p><p id="oralChatCopyStatus" class="muted">Op een telefoon kun je de tekst ook handmatig selecteren en kopiëren.</p>';
+ panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function copyOralChatPrompt(){
+ const el=document.getElementById('oralChatPrompt'),status=document.getElementById('oralChatCopyStatus');
+ if(!el)return;
+ try{
+  if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(oralChatPrompt);
+  if(status)status.textContent='Gekopieerd. Open ChatGPT, plak de instructie en verstuur deze.';
+ }catch(e){
+  el.focus();el.select();
+  if(status)status.textContent='Automatisch kopiëren lukt niet. De tekst is geselecteerd: kies Kopieer via je apparaat.';
+ }
 }
 function renderFinalExam(){
  if(examIndex<0){
