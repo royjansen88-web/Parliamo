@@ -243,8 +243,15 @@ const grammarExercises=[["Mi ___ Luca.","chiamo","Ik heet Luca.","chiamo"],["Ho 
 function sentenceMatches(answer,expected){
  const clean=x=>norm(String(x)).replace(/[’']/g,'').replace(/[!?.,;:]/g,' ').replace(/\s+/g,' ').trim();
  const given=clean(answer),options=String(expected).split('|').map(clean);
- const strip=x=>x.replace(/^(io|tu|lui|lei|noi|voi|loro) /,'');
- return options.some(x=>x===given||strip(x)===strip(given));
+ const pronouns=['io','tu','lui','lei','noi','voi','loro'];
+ const parts=x=>{const words=x.split(' ');return pronouns.includes(words[0])?{person:words[0],rest:words.slice(1).join(' ')}:{person:null,rest:x}};
+ return options.some(x=>{
+  if(x===given)return true;
+  const a=parts(x),b=parts(given);
+  // Een expliciet ander onderwerp mag nooit worden weggepoetst.
+  if(a.person&&b.person&&a.person!==b.person)return false;
+  return a.rest===b.rest;
+ });
 }
 const extraSentences=[[["Mi chiamo Anna.","Ik heet Anna."],["Come ti chiami?","Hoe heet jij?"]],[["Ho dieci anni.","Ik ben tien jaar."],["Quanti anni hai?","Hoe oud ben je?"]],[["Io sono italiano.","Ik ben Italiaans."],["Tu hai un libro.","Jij hebt een boek."]],[["Vorrei un'acqua, per favore.","Ik zou graag een water willen, alstublieft."],["Il conto, per favore.","De rekening, alstublieft."]],[["Come stai?","Hoe gaat het met je?"],["Quando parti?","Wanneer vertrek je?"]],[["Questo è mio fratello.","Dit is mijn broer."],["La tua casa è bella.","Jouw huis is mooi."]],[["Il libro è nuovo.","Het boek is nieuw."],["Le case sono grandi.","De huizen zijn groot."]],[["È l'una.","Het is één uur."],["Sono le cinque.","Het is vijf uur."]],[["Vai sempre dritto.","Ga steeds rechtdoor."],["Gira a sinistra.","Sla linksaf."]],[["Il gatto è nero.","De kat is zwart."],["La casa è bianca.","Het huis is wit."]],[["Io parlo italiano.","Ik spreek Italiaans."],["Loro parlano inglese.","Zij spreken Engels."]],[["Il treno parte alle otto.","De trein vertrekt om acht uur."],["Dov'è la fermata?","Waar is de halte?"]],[["Mi sveglio presto.","Ik word vroeg wakker."],["Ci laviamo le mani.","Wij wassen onze handen."]],[["Quanto costa questo?","Hoeveel kost dit?"],["Cerco una maglietta.","Ik zoek een T-shirt."]],[["Ho mal di gola.","Ik heb keelpijn."],["Mi sento stanco.","Ik voel me moe."]],[["Oggi fa caldo.","Vandaag is het warm."],["Domani piove.","Morgen regent het."]],[["Mi piacciono i libri.","Ik houd van boeken."],["Mi piace la musica.","Ik houd van muziek."]],[["Lei ha gli occhi verdi.","Zij heeft groene ogen."],["Lui è alto.","Hij is lang."]],[["Prendo una pizza.","Ik neem een pizza."],["Vorrei il menù.","Ik zou graag de menukaart willen."]],[["Posso venire domani.","Ik kan morgen komen."],["Devo studiare.","Ik moet studeren."]]];
 
@@ -749,15 +756,16 @@ function startSkill(mode){
  skillItems=shuffle(skillItems);skillIndex=0;skillScore=0;skillMissed=[];skillHintsUsed=0;renderSkill();
 }
 function skillFeedbackReason(given,expected){
- const tidy=x=>norm(String(x)).replace(/[!?.,;:]/g,' ').replace(/\\s+/g,' ').trim();
+ const raw=x=>String(x).toLocaleLowerCase('it').replace(/[!?.,;:]/g,' ').replace(/\s+/g,' ').trim();
+ const tidy=x=>norm(raw(x));
  const a=tidy(given),b=tidy(String(expected).split('|')[0]);
- if(a===b)return 'Let op hoofdletters, accenten of schrijfwijze; controleer het voorbeeld.';
- const aWords=a.split(' '),bWords=b.split(' ');
+ if(raw(given)!==raw(String(expected).split('|')[0])&&a===b)return 'Je woorden lijken goed. Controleer de accenten en apostrofs in het voorbeeld.';
+ const aWords=a?a.split(' '):[],bWords=b?b.split(' '):[];
  if(aWords.length===bWords.length&&aWords.slice().sort().join(' ')===bWords.slice().sort().join(' '))return 'Je gebruikt dezelfde woorden, maar in een andere volgorde. Vergelijk de zinsbouw.';
- if(aWords.length===bWords.length&&aWords.filter((w,i)=>w!==bWords[i]).length===1)return 'Er wijkt één woord of werkwoordsvorm af. Vergelijk vooral de uitgang en het lidwoord.';
- if(aWords.length<bWords.length)return 'Je antwoord is korter dan het voorbeeld. Kijk of een werkwoord, lidwoord of ander zinsdeel ontbreekt.';
- if(aWords.length>bWords.length)return 'Je antwoord bevat meer woorden dan het voorbeeld. Kijk welke woorden echt nodig zijn.';
- return 'Vergelijk de werkwoordsvorm, lidwoorden en woordvolgorde met het voorbeeld.';
+ if(aWords.length===bWords.length&&aWords.filter((w,i)=>w!==bWords[i]).length===1)return 'Er wijkt één woord of werkwoordsvorm af. Controleer de uitgang, het lidwoord of het voornaamwoord.';
+ if(aWords.length<bWords.length)return 'Je antwoord is korter dan het voorbeeld. Controleer of er een werkwoord, lidwoord of ander zinsdeel ontbreekt.';
+ if(aWords.length>bWords.length)return 'Je antwoord bevat meer woorden dan het voorbeeld. Controleer welke woorden echt nodig zijn.';
+ return 'Vergelijk je antwoord met het voorbeeld. Let vooral op werkwoordsvorm, lidwoorden en woordvolgorde.';
 }
 let skillHintsUsed=0;
 function renderSkill(){
@@ -1139,6 +1147,11 @@ function start(n){if(!previewLesson)previewLesson=false;current=n;questionMistak
  {title:'Eerst begrijpen: iemand beschrijven',intro:'Voor uiterlijk gebruik je in het Italiaans zowel avere als essere.',rows:[['Ho gli occhi verdi','Ik heb groene ogen'],['Ho i capelli scuri','Ik heb donker haar'],['Sono alto','Ik ben lang (man)'],['Sono alta','Ik ben lang (vrouw)']],rule:'Ogen en haar beschrijf je vaak met avere; lengte met essere. «Alto» en «alta» passen zich aan.'},
  {title:'Eerst begrijpen: een keuze bestellen',intro:'Met prendo kun je direct aangeven wat je wilt nemen.',rows:[['Prendo una pizza','Ik neem een pizza'],['Prendo un caffè','Ik neem een koffie'],['Vorrei un tè','Ik zou graag thee willen'],['Il menù, per favore','De menukaart, alstublieft']],rule:'«Prendo» is direct en gebruikelijk. «Vorrei» klinkt wat beleefder en voorzichtiger.'},
  {title:'Eerst begrijpen: kunnen, willen, moeten',intro:'Na potere, volere en dovere gebruik je meestal de infinitief: het hele werkwoord.',rows:[['Posso andare','Ik kan gaan'],['Voglio mangiare','Ik wil eten'],['Devo studiare','Ik moet studeren'],['Puoi aiutarmi?','Kun jij me helpen?']],rule:'«Posso» betekent «ik kan», «voglio» betekent «ik wil», «devo» betekent «ik moet». Daarna volgt het hele werkwoord: «posso parlare», niet «posso parlo». De eerste vorm vertelt al wie iets kan, wil of moet.'}
+,
+ {title:'Eerst begrijpen: regelmatige werkwoorden op -are',intro:'Een Italiaans werkwoord verandert met de persoon. Haal bij parlare (spreken) eerst -are weg: parl-. Voeg daarna de juiste uitgang toe.',rows:[['Io parlo','Ik spreek'],['Tu parli','Jij spreekt'],['Lui / lei parla','Hij / zij spreekt'],['Noi parliamo','Wij spreken'],['Voi parlate','Jullie spreken'],['Loro parlano','Zij spreken']],rule:'De uitgangen zijn -o, -i, -a, -iamo, -ate en -ano. Hetzelfde patroon zie je bij lavorare: «lavoro» = ik werk. «Io parlare» is onjuist als je «ik spreek» bedoelt: parlare is het hele werkwoord, parlo de vervoegde vorm.'},
+ {title:'Eerst begrijpen: ontkennen met non',intro:'Wil je zeggen dat iets niet gebeurt? Zet non direct vóór het vervoegde werkwoord. De werkwoordsvorm verandert daardoor niet.',rows:[['Parlo italiano','Ik spreek Italiaans'],['Non parlo italiano','Ik spreek geen Italiaans'],['Capisco','Ik begrijp het'],['Non capisco','Ik begrijp het niet'],['Non posso','Ik kan niet'],['Non lo so','Ik weet het niet']],rule:'«Non» staat vóór het werkwoord: «non capisco», niet «capisco non». «Mai» betekent nooit; «non parlo mai» betekent ik spreek nooit. «No» is een los antwoord op een vraag; «non» ontkent binnen een zin.'},
+ {title:'Eerst begrijpen: vragen maken',intro:'Veel Italiaanse ja-neevragen hebben dezelfde woordvolgorde als een mededeling. Met je stem laat je horen dat je een vraag stelt; schriftelijk gebruik je een vraagteken.',rows:[['Parli italiano.','Je spreekt Italiaans.'],['Parli italiano?','Spreek je Italiaans?'],['Dove abiti?','Waar woon je?'],['Quando parti?','Wanneer vertrek je?'],['Perché studi?','Waarom studeer je?'],['A che ora?','Hoe laat?']],rule:'Vraagwoorden staan meestal vooraan. «Dove» is waar, «quando» wanneer en «perché» waarom. Je hebt niet altijd een extra woord voor «doe» nodig: «Parli italiano?» is al een volledige vraag.'},
+ {title:'Eerst begrijpen: werkwoorden op -ere en -ire',intro:'Ook bij -ere en -ire haal je de uitgang van het hele werkwoord weg en voeg je een persoonsuitgang toe. Let op: niet alle -ire-werkwoorden volgen precies hetzelfde patroon.',rows:[['Io leggo','Ik lees'],['Tu leggi','Jij leest'],['Lui / lei legge','Hij / zij leest'],['Noi leggiamo','Wij lezen'],['Io dormo','Ik slaap'],['Tu dormi','Jij slaapt'],['Noi dormiamo','Wij slapen']],rule:'Bij leggere (lezen) zie je leggo, leggi, legge, leggiamo, leggete, leggono. Bij dormire (slapen): dormo, dormi, dorme, dormiamo, dormite, dormono. «Io leggere» is geen correcte zin voor «ik lees»; gebruik «leggo». Sommige -ire-werkwoorden, zoals capire, krijgen -isc- in bepaalde vormen: «capisco».'}
 ];
 // Afzonderlijke klikafhandeling voor de dynamisch opgebouwde grammaticatabel.
 document.addEventListener('click',function(e){
