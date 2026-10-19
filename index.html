@@ -165,6 +165,50 @@ main{max-width:1190px;padding:30px 24px 90px}
 #app .card button:disabled{filter:grayscale(.3)}
 @media(max-width:750px){.lesson-cover{grid-template-columns:1fr}.lesson-cover-art{display:none}.lesson-content{padding:16px}.lesson-intro{padding:15px}.lesson-vocabulary{grid-template-columns:1fr}.question-card{padding:21px}.lesson-cover-copy{padding:25px}.lesson-cover h2{font-size:34px}}
 @media(prefers-reduced-motion:reduce){#app{animation:none}}
+
+/* Finish the same design language across review, examination, settings and result panels */
+#app>.card{max-width:100%;overflow-wrap:anywhere}
+#app>.card:has(> #lessonInsights){border-top:3px solid #a7c9ad}
+#app>.card:has(> #wordlist),#app>.card:has(> #wordSearchResults){background:linear-gradient(180deg,#fdfefa,#fff 140px)}
+#app>.card:has(> #wordlist)>h2,#app>.card:has(> #wordSearchResults)>h2{font-family:Georgia,serif;font-size:clamp(27px,3vw,37px)}
+#app>.card:has(> #wordlist) select{background:#f4f9f4}
+#app>.card:has(> #reviewAnswer){border-top:5px solid #b3d7bc;padding:clamp(22px,4vw,38px)}
+#app>.card:has(> #reviewAnswer)>.eyebrow{letter-spacing:1.4px}
+#app>.card:has(> #reviewAnswer) .bar{height:10px}
+#app>.card:has(> #reviewAnswer) input{font-size:18px}
+#app>.card:has(> #reviewAnswer)>.muted{font-size:14px}
+#app>.card:has(> #reviewAnswer) button{margin-bottom:5px}
+#app>.card:has(> #skillAnswer){border-top:5px solid #e4c38a}
+#app>.card:has(> #skillAnswer)>h2{font-family:Georgia,serif;font-size:clamp(27px,3vw,40px)}
+#app>.card:has(> #lessonInsights) h3{font-family:Georgia,serif}
+#app .progress-panel #lessonInsights .bar{height:8px}
+#app>.card:has(> .big){background:linear-gradient(145deg,#fff,#f5faf4);border:1px solid #dce9dd}
+#app>.card:has(> .big) .big{font-size:clamp(45px,6vw,70px);color:#26794e}
+#app .feedback p:last-child{margin-bottom:0}
+#app .row>button.btn.secondary{flex-shrink:0}
+#app .btn.secondary[aria-label*=Luister],#app .btn.secondary[aria-label*=Beluister]{min-width:45px}
+#app .card details[open]{background:#edf7ee;border-color:#b7d6bd}
+#app .card details summary{list-style-position:outside}
+#app .card table{width:100%;border-collapse:collapse}
+#app .card table td{vertical-align:middle}
+#app .card table td:last-child{text-align:right}
+#app .card input[type=file]{font-size:13px}
+#app .card label{color:#28523b}
+#app .card button,#app .card input,#app .card select{touch-action:manipulation}
+#app .card .foot{margin-top:16px;padding-top:12px;border-top:1px solid #e9eee9}
+@media(max-width:650px){
+ #app>.card{padding:20px}
+ #app>.card>.row{gap:10px}
+ #app>.card .btn{max-width:100%;white-space:normal}
+ #app>.card .row>div{min-width:0}
+ #app>.card .big{font-size:42px}
+ #app>.card .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .card table{font-size:13px}
+ #app .card table td{padding:10px 6px!important}
+ #app .card .row{gap:8px}
+ #app .card details{padding:10px 12px}
+}
+@media(max-width:370px){#app>.card .grid{grid-template-columns:1fr}}
 </style></head><body><header><div class="brand">PARLIAMO <span aria-hidden="true">✦</span> ITALIAANS LEREN</div><h1 id="greeting">Ciao! 👋</h1><p>Elke dag een beetje meer Italiaans. Leer, oefen en spreek met vertrouwen.</p></header><main id="app"></main><nav class="nav" aria-label="Hoofdnavigatie"><div class="nav-identity"><span class="nav-mark">P<span>✦</span></span><span>PARLIAMO<small>ITALIAANS LEREN</small></span></div><div class="nav-links"><button data-tab="home" class="active"><span aria-hidden="true">⌂</span> Leren</button><button data-tab="practice"><span aria-hidden="true">✎</span> Oefenen</button><button data-tab="review"><span aria-hidden="true">↻</span> Herhalen</button><button data-tab="exam"><span aria-hidden="true">✧</span> Examen</button><button data-tab="progress"><span aria-hidden="true">▥</span> Voortgang</button></div></nav><script>
 const lessons=[
 {title:'Ciao! Kennismaken',goal:'Groeten en jezelf voorstellen',explain:'Ciao betekent hallo of dag. Buongiorno is goedemorgen of goedendag. Mi chiamo betekent ik heet.',words:[['ciao','hallo / dag'],['buongiorno','goedendag'],['arrivederci','tot ziens'],['grazie','dank je'],['prego','graag gedaan'],['mi chiamo','ik heet'],['come stai?','hoe gaat het?'],['bene','goed'],['per favore','alsjeblieft'],['sì','ja'],['no','nee'],['buonasera','goedenavond'],['a presto','tot snel'],['scusa','sorry / pardon'],['piacere','aangenaam'],['salve','hallo (beleefd)'],['molto bene','heel goed'],['così così','zozo'],['e tu?','en jij?'],['buonanotte','welterusten']]},
