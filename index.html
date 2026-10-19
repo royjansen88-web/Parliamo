@@ -92,6 +92,8 @@ function mergeProgress(local,remote){
  for(const item of b.attempts){if(!attempts.some(x=>JSON.stringify(x)===JSON.stringify(item)))attempts.push(item)}
  const oralExamResults=[...(Array.isArray(a.oralExamResults)?a.oralExamResults:[])];
  for(const item of (Array.isArray(b.oralExamResults)?b.oralExamResults:[])){if(!oralExamResults.some(x=>x.id===item.id))oralExamResults.push(item)}
+ const oralChatResults=[...(Array.isArray(a.oralChatResults)?a.oralChatResults:[])];
+ for(const item of (b.oralChatResults||[])){if(!oralChatResults.some(x=>x.id===item.id))oralChatResults.push(item)}
  const finalExamResults=[...(Array.isArray(a.finalExamResults)?a.finalExamResults:[])];
  for(const item of (Array.isArray(b.finalExamResults)?b.finalExamResults:[])){if(!finalExamResults.some(x=>x.id&&item.id?x.id===item.id:JSON.stringify(x)===JSON.stringify(item)))finalExamResults.push(item)}
  const reviews={...b.reviews};
@@ -99,7 +101,7 @@ function mergeProgress(local,remote){
   const other=reviews[id];
   if(!other||Date.parse(record?.lastSeen||0)>=Date.parse(other?.lastSeen||0))reviews[id]=record;
  }
- return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews,oralExamResults,finalExamResults});
+ return normalizeProgress({...b,...a,name:a.name||b.name,passedIds:[...new Set([...a.passedIds,...b.passedIds])],attempts,reviews,oralExamResults,oralChatResults,finalExamResults});
 }
 function cloudStatus(message){cloudMessage=message;const el=document.getElementById('cloudStatus');if(el)el.textContent=message}
 function cloudError(e){cloudStatus('Synchronisatie mislukt: '+(e.message||e));}
@@ -659,7 +661,7 @@ function renderOralExam(){
  if(oralScene<0){
   const history=Array.isArray(state.oralExamResults)?state.oralExamResults:[];
   const last=history.at(-1);
-  app.innerHTML='<div class="card"><div class="eyebrow">Mondeling oefenen · A1</div><h2>Praat Italiaans</h2><p>Zes vragen per situatie. De gesprekspartner reageert op bepaalde antwoorden en accepteert meerdere gebruikelijke formuleringen.</p><p class="muted">De beoordeling is nog steeds een beperkte inhoudsindicatie. Uitspraak en vrije grammatica worden niet betrouwbaar beoordeeld.</p>'+oralScenes.map((x,i)=>'<p><button class="btn" onclick="oralStart('+i+')">'+esc(x.title)+'</button></p>').join('')+(last&&last.answers?.some(a=>!a.relevant)?'<p><button class="btn secondary" onclick="oralLast=state.oralExamResults.at(-1);oralRepeatMissed()">Oefen gemiste antwoorden opnieuw</button></p>':'')+(history.length?'<h3>Eerdere gesprekken</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+esc(x.scene)+' · '+x.score+'% '+(x.retry?'(herkansing)':'')+'</p>').join(''):'')+'</div><div class="card"><h2>Vrij gesprek met ChatGPT</h2><p>Open een voorbereid A1-rollenspel en schakel in ChatGPT over naar spraak. Er is geen automatische terugkoppeling naar Parliamo.</p><button class="btn secondary" onclick="openOralChatGPT()">Start ChatGPT-rollenspel →</button><div id="oralChatPanel" hidden></div></div>';return;
+  app.innerHTML='<div class="card"><div class="eyebrow">Mondeling oefenen · A1</div><h2>Praat Italiaans</h2><p>Zes vragen per situatie. De gesprekspartner reageert op bepaalde antwoorden en accepteert meerdere gebruikelijke formuleringen.</p><p class="muted">De beoordeling is nog steeds een beperkte inhoudsindicatie. Uitspraak en vrije grammatica worden niet betrouwbaar beoordeeld.</p>'+oralScenes.map((x,i)=>'<p><button class="btn" onclick="oralStart('+i+')">'+esc(x.title)+'</button></p>').join('')+(last&&last.answers?.some(a=>!a.relevant)?'<p><button class="btn secondary" onclick="oralLast=state.oralExamResults.at(-1);oralRepeatMissed()">Oefen gemiste antwoorden opnieuw</button></p>':'')+(history.length?'<h3>Eerdere gesprekken</h3>'+history.slice(-5).reverse().map(x=>'<p>'+esc(x.date)+' · '+esc(x.scene)+' · '+x.score+'% '+(x.retry?'(herkansing)':'')+'</p>').join(''):'')+'</div><div class="card"><h2>Vrij gesprek met ChatGPT</h2><p>Open een voorbereid A1-rollenspel en schakel in ChatGPT over naar spraak. Er is geen automatische terugkoppeling naar Parliamo.</p><button class="btn secondary" onclick="openOralChatGPT()">Start ChatGPT-rollenspel →</button><div id="oralChatPanel" hidden></div><h3>Uitslag van ChatGPT toevoegen</h3><p>Vul na je gesprek de score en feedback uit ChatGPT in. Deze uitslag is handmatig overgenomen.</p><label for="chatOralScore">Score (0–100)</label><input id="chatOralScore" type="number" min="0" max="100" placeholder="Bijvoorbeeld 78"><label for="chatOralFeedback">Feedback van ChatGPT</label><textarea id="chatOralFeedback" rows="5" placeholder="Sterke punten en verbeterpunten…" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px"></textarea><p><button class="btn" onclick="saveChatOralResult()">Uitslag opslaan</button></p><div id="chatOralResults"></div></div>';return;
  }
  const scene=oralScenes[oralScene],total=oralRetry?oralRetryItems.length:scene.turns.length;
  if(oralIndex>=total){
@@ -671,6 +673,21 @@ function renderOralExam(){
 }
 
 const oralChatPrompt='Je bent een vriendelijke Italiaanse A1-examinator. Voer een spontaan mondeling examen in het Italiaans. Speel achtereenvolgens een ober, hotelreceptionist en voorbijganger. Stel steeds één korte Italiaanse vraag, wacht op mijn gesproken antwoord en pas je vervolgvragen natuurlijk aan. Geef geen Nederlandse vertalingen of antwoorden tijdens het examen. Na ongeveer 12 vragen geef je in het Nederlands feedback over begrip, woordenschat, grammatica en interactie. Wees duidelijk dat dit geen officieel examen is.';
+
+function saveChatOralResult(){
+ const scoreField=document.getElementById('chatOralScore'),feedbackField=document.getElementById('chatOralFeedback');
+ const score=Number(scoreField?.value),feedback=feedbackField?.value.trim();
+ if(!scoreField?.value||!Number.isFinite(score)||score<0||score>100){alert('Vul een score tussen 0 en 100 in.');return}
+ if(!feedback){alert('Voeg de feedback van ChatGPT toe.');return}
+ if(!Array.isArray(state.oralChatResults))state.oralChatResults=[];
+ state.oralChatResults.push({id:Date.now().toString(36),date:new Date().toLocaleDateString('nl-NL'),score:Math.round(score),feedback,source:'ChatGPT · handmatig ingevoerd'});
+ save();scoreField.value='';feedbackField.value='';renderChatOralResults();
+}
+function renderChatOralResults(){
+ const el=document.getElementById('chatOralResults');if(!el)return;
+ const history=Array.isArray(state.oralChatResults)?state.oralChatResults:[];
+ el.innerHTML=history.length?'<h3>ChatGPT-resultaten</h3>'+history.slice(-5).reverse().map(x=>'<div class="card"><strong>'+esc(x.date)+' · '+x.score+'%</strong><p>'+esc(x.feedback)+'</p><small>'+esc(x.source)+'</small></div>').join(''):'';
+}
 function openOralChatGPT(){
  const panel=document.getElementById('oralChatPanel');
  if(!panel)return;
