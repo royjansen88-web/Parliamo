@@ -145,15 +145,39 @@ async function cloudSignUp(){
   else cloudStatus('Account aangemaakt. Controleer je e-mail voor de bevestigingslink en log daarna in.');
  }catch(e){cloudError(e)}
 }
+function cloudGoogleLogin(){
+ const redirect='https://royjansen88-web.github.io/Parliamo/';
+ const url=SUPABASE_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(redirect);
+ window.location.assign(url);
+}
+async function cloudHandleOAuthRedirect(){
+ const hash=new URLSearchParams(location.hash.slice(1));
+ const query=new URLSearchParams(location.search);
+ const oauthError=hash.get('error_description')||query.get('error_description');
+ if(oauthError){cloudStatus('Google-inloggen mislukt: '+oauthError);history.replaceState(null,'',location.pathname);return}
+ const access=hash.get('access_token'),refresh=hash.get('refresh_token');
+ if(!access||!refresh)return;
+ history.replaceState(null,'',location.pathname);
+ try{
+  const response=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:cloudHeaders(access)});
+  if(!response.ok)throw Error('Google-account kon niet worden gecontroleerd.');
+  const user=await response.json();
+  cloudSession={access_token:access,refresh_token:refresh,user,expires_at:Math.floor(Date.now()/1000)+Number(hash.get('expires_in')||3600)};
+  localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(cloudSession));
+  cloudReady=false;tab='progress';cloudStatus('Ingelogd met Google. Voortgang wordt opgehaald…');
+  await cloudSync();render();
+ }catch(e){cloudError(e)}
+}
 function cloudSignOut(){
  clearTimeout(cloudTimer);cloudSession=null;cloudReady=false;localStorage.removeItem(CLOUD_SESSION_KEY);cloudStatus('Uitgelogd. Je lokale voortgang blijft bewaard.');render();
 }
 function cloudPanel(){
- return '<div class="card"><div class="eyebrow">Synchronisatie tussen apparaten</div><h2>Mijn Parliamo-account</h2>'+(cloudSession?'<p>Ingelogd als <strong>'+esc(cloudSession.user?.email||'gebruiker')+'</strong>.</p><p>Je voortgang wordt op dit apparaat bewaard en automatisch naar je account gesynchroniseerd.</p><p><button class="btn" onclick="cloudSync()">Nu synchroniseren</button> <button class="btn secondary" onclick="cloudSignOut()">Uitloggen</button></p>':'<p>Log op je computer en telefoon in met hetzelfde account. Je bestaande lessen worden bij de eerste synchronisatie samengevoegd.</p><input id="cloudEmail" type="email" placeholder="E-mailadres" autocomplete="email" style="width:100%;padding:12px;margin:5px 0"><input id="cloudPassword" type="password" placeholder="Wachtwoord (minimaal 8 tekens)" autocomplete="current-password" style="width:100%;padding:12px;margin:5px 0"><p><button class="btn" onclick="cloudSignIn()">Inloggen</button> <button class="btn secondary" onclick="cloudSignUp()">Account aanmaken</button></p><p class="foot">Na registratie moet je mogelijk eerst je e-mailadres bevestigen. Gebruik nooit je Supabase-databasewachtwoord om hier in te loggen.</p>')+'<p class="muted" id="cloudStatus" role="status">'+esc(cloudMessage)+'</p></div>';
+ return '<div class="card"><div class="eyebrow">Synchronisatie tussen apparaten</div><h2>Mijn Parliamo-account</h2>'+(cloudSession?'<p>Ingelogd als <strong>'+esc(cloudSession.user?.email||'gebruiker')+'</strong>.</p><p>Je voortgang wordt op dit apparaat bewaard en automatisch naar je account gesynchroniseerd.</p><p><button class="btn" onclick="cloudSync()">Nu synchroniseren</button> <button class="btn secondary" onclick="cloudSignOut()">Uitloggen</button></p>':'<p>Log op je computer en telefoon in met hetzelfde account. Je bestaande lessen worden bij de eerste synchronisatie samengevoegd.</p><p><button class="btn" onclick="cloudGoogleLogin()">Inloggen met Google (Gmail)</button></p><p class="muted">Of gebruik e-mailadres en wachtwoord:</p><input id="cloudEmail" type="email" placeholder="E-mailadres" autocomplete="email" style="width:100%;padding:12px;margin:5px 0"><input id="cloudPassword" type="password" placeholder="Wachtwoord (minimaal 8 tekens)" autocomplete="current-password" style="width:100%;padding:12px;margin:5px 0"><p><button class="btn" onclick="cloudSignIn()">Inloggen</button> <button class="btn secondary" onclick="cloudSignUp()">Account aanmaken</button></p><p class="foot">Na registratie moet je mogelijk eerst je e-mailadres bevestigen. Gebruik nooit je Supabase-databasewachtwoord om hier in te loggen.</p>')+'<p class="muted" id="cloudStatus" role="status">'+esc(cloudMessage)+'</p></div>';
 }
 window.addEventListener('online',()=>{if(cloudSession)cloudSync()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudSession)cloudSync()});
-setTimeout(()=>{if(cloudSession)cloudSync()},600);
+cloudHandleOAuthRedirect();
+setTimeout(()=>{if(cloudSession&&!location.hash.includes('access_token'))cloudSync()},600);
 
 function exportProgress(){
  const payload={app:'Parliamo',formatVersion:1,exportedAt:new Date().toISOString(),state};
