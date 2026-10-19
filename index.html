@@ -292,14 +292,15 @@ const advancedLessonContent=[
  {note:['Vragen stellen','Gebruik een vraagwoord zoals dove, quando of perché. Een ja-neevraag kan dezelfde woordvolgorde hebben als een gewone zin.','Dove abiti?','Waar woon je?'],deep:['Een vraagteken en vragende intonatie kunnen van Parli italiano een vraag maken.','Parli italiano?','Spreek je Italiaans?'],grammar:['___ abiti?','Dove','Dove betekent waar.'],extra:[['___ parti?','Quando','Quando betekent wanneer.'],['___ studi italiano?','Perché','Perché betekent waarom.']],sentences:[['Quando parti?','Wanneer vertrek je?'],['Perché studi italiano?','Waarom studeer je Italiaans?']],listen:['Dove abiti? Abito a Roma.','Waar woont de spreker?','Rome',['Milaan','Rome','Napels','Turijn']],extraListen:['Quando parti? Parto domani.','Wanneer vertrekt de spreker?','Morgen',['Vandaag','Morgen','Gisteren','Volgende week']]},
  {note:['Werkwoorden op -ere en -ire','Bij leggere: leggo, leggi, legge. Bij dormire: dormo, dormi, dorme.','Io leggo un libro.','Ik lees een boek.'],deep:['Bij noi eindigen beide voorbeelden op -iamo: leggiamo en dormiamo. Sommige -ire-werkwoorden hebben -isc-, zoals capisco.','Noi dormiamo.','Wij slapen.'],grammar:['Tu ___ un libro.','leggi','Bij tu hoort leggi, niet leggo.'],extra:[['Io ___ un libro.','leggo','Bij io hoort leggo.'],['Noi ___ bene.','dormiamo','Bij noi hoort dormiamo.']],sentences:[['Io dormo bene.','Ik slaap goed.'],['Tu leggi un libro.','Jij leest een boek.']],listen:['Io leggo e mia sorella dorme.','Wat doet de zus?','Slapen',['Lezen','Slapen','Schrijven','Werken']],extraListen:['Noi leggiamo un libro.','Wat doen wij?','Een boek lezen',['Een boek lezen','Een brief schrijven','Eten','Slapen']]}
 ];
-advancedLessonContent.forEach(c=>{
- grammarNotes.push(c.note);
- grammarDeepDives.push(c.deep);
- grammarExercises.push(c.grammar);
- extraGrammarExercises.push(c.extra);
- extraSentences.push(c.sentences);
- listeningDialogues.push(c.listen);
- extraListeningDialogues.push(c.extraListen);
+advancedLessonContent.forEach((c,i)=>{
+ const n=20+i;
+ grammarNotes[n]=c.note;
+ grammarDeepDives[n]=c.deep;
+ grammarExercises[n]=c.grammar;
+ extraGrammarExercises[n]=c.extra;
+ extraSentences[n]=c.sentences;
+ listeningDialogues[n]=c.listen;
+ extraListeningDialogues[n]=c.extraListen;
 });
 // De volledige inhoud wordt gecontroleerd nadat ook de basisuitleg is geladen.
 const sentenceExercises=grammarNotes.map((note,i)=>[{italian:note[2],dutch:note[3]},...extraSentences[i].map(([italian,dutch])=>({italian,dutch}))]);
