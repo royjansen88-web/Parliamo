@@ -549,9 +549,9 @@ function quizFor(n){
  }
  if(grammarExercises[n]){
   const g=shuffle([grammarExercises[n],...extraGrammarExercises[n]])[0];
-  qs[6]={type:'grammar',question:'Vul het ontbrekende Italiaanse woord in: '+g[0],correct:g[1],word:g[1],explanation:g[2]+' Uitleg: '+grammarFoundations[n].rule};
+  qs[6]={type:'grammar',question:'Vul het ontbrekende Italiaanse woord in: '+g[0],correct:g[1],word:g[1],explanation:g[2]};
   const sentence=shuffle(sentenceExercises[n])[0];
-  qs[5]={type:'sentence',question:'Schrijf de volledige zin in het Italiaans: '+sentence.dutch,correct:sentence.italian,word:sentence.italian,explanation:'Dit is een voorbeeldzin uit de les. Vergelijk de werkwoordsvorm en woordvolgorde. '+grammarFoundations[n].rule};
+  qs[5]={type:'sentence',question:'Schrijf de volledige zin in het Italiaans: '+sentence.dutch,correct:sentence.italian,word:sentence.italian,explanation:'Vergelijk de persoonsvorm en woordvolgorde met de voorbeelden uit deze les.'};
  }
  // Een zelfstandig opgehaalde vervoeging telt mee in de officiële lestoets.
  const eligible=verbCourse.filter(v=>v.from<=n);
@@ -1285,9 +1285,9 @@ function guidedPracticeItems(n){
   items.push({label:'Werkwoord in een zin',prompt:'Welke vorm van '+v.inf+' ('+v.nl+') hoort bij '+verbPersons[p][0]+' ('+verbPersons[p][1]+')?',answer:v.forms[p],reason:v.explain,model:'Bekijk het voorbeeld: '+v.example});
  }
  const g=grammarExercises[n];
- if(g)items.push({label:'Grammatica begrijpen',prompt:g[0],answer:g[1],reason:g[2]+' '+grammarFoundations[n].rule,model:grammarNotes[n][2]+' = '+grammarNotes[n][3]});
+ if(g)items.push({label:'Grammatica begrijpen',prompt:g[0],answer:g[1],reason:g[2],model:grammarNotes[n][2]+' = '+grammarNotes[n][3]});
  const ex=sentenceExercises[n][0];
- if(ex)items.push({label:'Zin zelfstandig opbouwen',prompt:'Vertaal: '+ex.dutch,answer:ex.italian,reason:'Vergelijk de woordvolgorde en de persoonsvorm. '+grammarFoundations[n].rule,model:grammarDeepDives[n][1]+' = '+grammarDeepDives[n][2]});
+ if(ex)items.push({label:'Zin zelfstandig opbouwen',prompt:'Vertaal: '+ex.dutch,answer:ex.italian,reason:'Vergelijk de woordvolgorde en de persoonsvorm met de voorbeelden hierboven.',model:grammarDeepDives[n][1]+' = '+grammarDeepDives[n][2]});
  return items;
 }
 const lessonMisconceptions=[
