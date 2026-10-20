@@ -1290,9 +1290,26 @@ function guidedPracticeItems(n){
  if(ex)items.push({label:'Zin zelfstandig opbouwen',prompt:'Vertaal: '+ex.dutch,answer:ex.italian,reason:'Vergelijk de woordvolgorde en de persoonsvorm. '+grammarFoundations[n].rule,model:grammarDeepDives[n][1]+' = '+grammarDeepDives[n][2]});
  return items;
 }
+const lessonMisconceptions=[
+ ['«Tu chiami» is niet hetzelfde als «ti chiami».','Tu = jij (onderwerp); ti = jezelf (wederkerend). Voor «heten» hoort ti bij chiamarsi.'],
+ ['«Io dodici anni» mist een werkwoord.','Leeftijd druk je uit met avere: ho dodici anni.'],
+ ['«E» en «è» zijn niet hetzelfde.','E betekent en; è met accent betekent is.'],
+ ['«Voglio» en «vorrei» zijn niet even beleefd.','Vorrei is een beleefde wens: ik zou graag willen.'],
+ ['Een vraag hoeft niet altijd een andere woordvolgorde.','Parli italiano? wordt vaak alleen door intonatie een vraag.'],
+ ['Bij «mia madre» staat vaak geen lidwoord.','Bij één enkelvoudig familielid met bezittelijk voornaamwoord laat je het lidwoord doorgaans weg.'],
+ ['Een Nederlands lidwoord kun je niet automatisch overnemen.','Controleer in het Italiaans het geslacht en het aantal: il, lo, la, i, gli, le.'],
+ ['Een bijvoeglijk naamwoord blijft niet altijd onveranderd.','De uitgang past zich vaak aan het geslacht en aantal van het zelfstandig naamwoord aan.'],
+ ['Een Italiaanse ontkenning heeft geen Nederlands «niet» achteraan nodig.','Non staat doorgaans direct vóór de vervoegde werkwoordsvorm.'],
+ ['«C’è» en «ci sono» betekenen niet precies hetzelfde.','C’è gebruik je voor één ding; ci sono voor meerdere dingen.']
+];
+function renderCommonMistake(n){
+ const item=lessonMisconceptions[n];
+ if(!item)return '';
+ return '<div class="learning-compare"><div class="learning-example contrast"><small>Veelgemaakte denkfout</small><strong>'+esc(item[0])+'</strong></div><div class="learning-example"><small>Zo zit het wel</small><strong style="font-size:16px;line-height:1.5">'+esc(item[1])+'</strong></div></div>';
+}
 function renderGuidedPractice(n){
  const items=guidedPracticeItems(n);
- return '<section class="learning-card"><div class="learning-head"><span class="learning-step">04</span><div><div class="eyebrow">Ik doe voor → wij oefenen → jij probeert</div><h3>Begeleid oefenen</h3></div></div><p class="learning-lead">Lees eerst het voorbeeld en bedenk wat de regel is. Probeer daarna de vraag zelf te beantwoorden. Het antwoord blijft verborgen totdat je het opvraagt.</p>'+items.map((x,i)=>'<div class="learning-verb"><div class="eyebrow">Oefening '+(i+1)+' · '+esc(x.label)+'</div><div class="learning-example"><small>Zo ziet een uitgewerkt voorbeeld eruit</small><strong>'+esc(x.model.split(' = ')[0])+'</strong><span>'+esc(x.model.split(' = ').slice(1).join(' = '))+'</span></div><p><strong>Nu jij:</strong> '+esc(x.prompt)+'</p><details class="learning-check"><summary>Controleer antwoord en bekijk waarom</summary><p><strong>Antwoord: '+esc(x.answer)+'</strong></p><p>'+esc(x.reason)+'</p></details></div>').join('')+'<div class="learning-rule"><strong>Wanneer ben je klaar voor de toets?</strong><p>Kun je de antwoorden geven zonder de voorbeelden of de uitleg open te klappen? Zo niet, herhaal deze oefeningen nog een keer. De toets meet wat je zelfstandig weet.</p></div></section>';
+ return '<section class="learning-card"><div class="learning-head"><span class="learning-step">04</span><div><div class="eyebrow">Ik doe voor → wij oefenen → jij probeert</div><h3>Begeleid oefenen</h3></div></div><p class="learning-lead">Lees eerst het voorbeeld en bedenk wat de regel is. Probeer daarna de vraag zelf te beantwoorden. Het antwoord blijft verborgen totdat je het opvraagt.</p>'+items.map((x,i)=>'<div class="learning-verb"><div class="eyebrow">Oefening '+(i+1)+' · '+esc(x.label)+'</div><div class="learning-example"><small>Zo ziet een uitgewerkt voorbeeld eruit</small><strong>'+esc(x.model.split(' = ')[0])+'</strong><span>'+esc(x.model.split(' = ').slice(1).join(' = '))+'</span></div><p><strong>Nu jij:</strong> '+esc(x.prompt)+'</p><details class="learning-check"><summary>Controleer antwoord en bekijk waarom</summary><p><strong>Antwoord: '+esc(x.answer)+'</strong></p><p>'+esc(x.reason)+'</p></details></div>').join('')+renderCommonMistake(n)+'<div class="learning-rule"><strong>Wanneer ben je klaar voor de toets?</strong><p>Kun je de antwoorden geven zonder de voorbeelden of de uitleg open te klappen? Zo niet, herhaal deze oefeningen nog een keer. De toets meet wat je zelfstandig weet.</p></div></section>';
 }
 function renderGrammarFoundation(n){
  const g=grammarFoundations[n];if(!g)return '';
