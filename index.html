@@ -553,6 +553,12 @@ function quizFor(n){
   const sentence=shuffle(sentenceExercises[n])[0];
   qs[5]={type:'sentence',question:'Schrijf de volledige zin in het Italiaans: '+sentence.dutch,correct:sentence.italian,word:sentence.italian,explanation:'Dit is een voorbeeldzin uit de les. Vergelijk de werkwoordsvorm en woordvolgorde. '+grammarFoundations[n].rule};
  }
+ // Een zelfstandig opgehaalde vervoeging telt mee in de officiële lestoets.
+ const eligible=verbCourse.filter(v=>v.from<=n);
+ if(eligible.length){
+  const v=shuffle(eligible)[0],person=shuffle([0,1,2,3,4,5])[0];
+  qs[3]={type:'verb',question:'Vervoeg '+v.inf+' ('+v.nl+') voor '+verbPersons[person][0]+' ('+verbPersons[person][1]+'). Schrijf alleen de werkwoordsvorm.',correct:v.forms[person],word:v.forms[person],explanation:v.explain};
+ }
  const listening=words[chosen[7]];
  const dialogue=shuffle([listeningDialogues[n],extraListeningDialogues[n]])[0];
  qs.push({type:'dialogue',question:dialogue[1],correct:dialogue[2],options:shuffle(dialogue[3]),audio:dialogue[0],word:dialogue[0]});
@@ -1072,6 +1078,10 @@ function reviewCandidates(){
    const key=lesson.id+':'+wi,rec=state.reviews[key]||{};
    pool.push({key,it,nl,li,type:'word',stage:rec.stage||0,due:rec.due||0});
   });
+  verbCourse.filter(v=>v.from===li).forEach(v=>v.forms.forEach((form,pi)=>{
+   const key=lesson.id+':verb:'+v.inf+':'+pi,rec=state.reviews[key]||{};
+   pool.push({key,it:form,nl:'Vervoeg '+v.inf+' ('+v.nl+') voor '+verbPersons[pi][0]+' ('+verbPersons[pi][1]+')',li,type:'verb',stage:rec.stage||0,due:rec.due||0});
+  }));
   sentenceExercises[li].forEach((sentence,si)=>{const key=lesson.id+':sentence'+si,rec=state.reviews[key]||{};
    pool.push({key,it:sentence.italian,nl:sentence.dutch,li,type:'sentence',stage:rec.stage||0,due:rec.due||0});});
  });
@@ -1104,9 +1114,10 @@ function startReview(){
  const due=pool.filter(w=>w.due<=now);
  const priority=w=>{const r=state.reviews[w.key];return r&&r.lastSeen?((r.lastCorrect===false?100:0)+(5-(r.stage||0))*10):0};
  const rank=items=>items.map(w=>({w,score:priority(w)+Math.random()*5})).sort((a,b)=>b.score-a.score).map(x=>x.w);
+ const verbs=rank(due.filter(w=>w.type==='verb')).slice(0,3);
  const sentences=rank(due.filter(w=>w.type==='sentence')).slice(0,3);
- const words=rank(due.filter(w=>w.type==='word')).slice(0,12-sentences.length);
- reviewSession=shuffle([...sentences,...words]);
+ const words=rank(due.filter(w=>w.type==='word')).slice(0,12-sentences.length-verbs.length);
+ reviewSession=shuffle([...verbs,...sentences,...words]);
  reviewIndex=0;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function submitReview(){
@@ -1124,20 +1135,20 @@ function submitReview(){
  const prev=state.reviews[w.key]||{stage:0};
  const stage=reviewMistakes===0?Math.min((prev.stage||0)+1,5):0;
  const days=[1,2,4,7,14,30][stage];
- reviewRoundResults.push({it:w.it,nl:w.nl,li:w.li,type:w.type,firstTry:reviewMistakes===0});
+ reviewRoundResults.push({key:w.key,it:w.it,nl:w.nl,li:w.li,type:w.type,firstTry:reviewMistakes===0});
  if(!reviewDemo){state.reviews[w.key]={stage,due:Date.now()+days*86400000,lastCorrect:reviewMistakes===0,lastSeen:new Date().toISOString()};save();}reviewIndex++;reviewRevealed=false;reviewMistakes=0;renderReview();
 }
 function retryReviewMistakes(){
  const missed=reviewRoundResults.filter(x=>!x.firstTry);
  if(!missed.length)return;
- reviewSession=shuffle(missed.map(x=>({...x,key:lessons[x.li].id+':'+(x.type==='sentence'?'sentence'+sentenceExercises[x.li].findIndex(v=>v.italian===x.it):lessons[x.li].words.findIndex(v=>v[0]===x.it))})));
+ reviewSession=shuffle(missed.map(x=>({...x,key:x.key||lessons[x.li].id+':'+(x.type==='sentence'?'sentence'+sentenceExercises[x.li].findIndex(v=>v.italian===x.it):lessons[x.li].words.findIndex(v=>v[0]===x.it))})));
  reviewRoundResults=[];reviewIndex=0;reviewRevealed=false;reviewMistakes=0;reviewDemo=true;renderReview();
 }
 function renderReview(){
  const pool=reviewCandidates(),due=pool.filter(w=>w.due<=Date.now());
  if(reviewSession.length&&reviewIndex<reviewSession.length){
   const w=reviewSession[reviewIndex];
-  app.innerHTML=`<div class="card"><div class="eyebrow">Herhaalronde · ${reviewIndex+1}/${reviewSession.length}</div><div class="bar"><div class="fill" style="width:${reviewIndex/reviewSession.length*100}%"></div></div><p class="muted">Uit les ${w.li+1} · ${w.type==='sentence'?'Schrijf de hele zin':'Schrijf het woord'} in het Italiaans</p><h2>${esc(w.nl)}</h2><input id="reviewAnswer" type="text" autocomplete="off" placeholder="Typ je Italiaanse antwoord" onkeydown="if(event.key==='Enter')submitReview()"><p><button class="btn" onclick="submitReview()">Controleer antwoord</button> <button class="btn secondary" onclick="speak(reviewSession[reviewIndex].it)">▶ Luister</button></p><div id="reviewFeedback">${reviewRevealed?'<p class="muted">Vul het juiste antwoord zelf in om verder te gaan.</p>':''}</div></div>`;
+  app.innerHTML=`<div class="card"><div class="eyebrow">Herhaalronde · ${reviewIndex+1}/${reviewSession.length}</div><div class="bar"><div class="fill" style="width:${reviewIndex/reviewSession.length*100}%"></div></div><p class="muted">Uit les ${w.li+1} · ${w.type==='sentence'?'Schrijf de hele zin':w.type==='verb'?'Vervoeg het werkwoord':'Schrijf het woord'} in het Italiaans</p><h2>${esc(w.nl)}</h2><input id="reviewAnswer" type="text" autocomplete="off" placeholder="Typ je Italiaanse antwoord" onkeydown="if(event.key==='Enter')submitReview()"><p><button class="btn" onclick="submitReview()">Controleer antwoord</button> <button class="btn secondary" onclick="speak(reviewSession[reviewIndex].it)">▶ Luister</button></p><div id="reviewFeedback">${reviewRevealed?'<p class="muted">Vul het juiste antwoord zelf in om verder te gaan.</p>':''}</div></div>`;
   document.getElementById('reviewAnswer').focus();
   return;
  }
@@ -1299,7 +1310,7 @@ function check(){
  document.getElementById('next').classList.remove('hidden');
  document.querySelectorAll('.choice,input').forEach(x=>x.disabled=true);
 }
-function next(){idx++;selection=null;spoken=false;questionMistakes=0;renderQuiz();window.scrollTo(0,0)}function finish(){let completedLesson=current;let wasPreview=previewLesson;previewLesson=false;let score=Math.round(answers.filter(a=>a.good).length/answers.length*100),speech=answers.filter(a=>a.type==='speak').every(a=>a.good),passed=score>=80&&speech;if(!wasPreview){state.attempts.push({lesson:current,lessonId:lessons[current].id,score,date:new Date().toLocaleDateString('nl-NL')});if(passed&&!state.passedIds.includes(lessons[current].id))state.passedIds.push(lessons[current].id);save();}app.innerHTML=`<div class="card"><div class="eyebrow">Toets afgerond</div><div class="big">${score}%</div><h2>${wasPreview?'Voorbeeldtoets afgerond':passed?'Les behaald!':'Nog even oefenen'}</h2><p>${wasPreview?'Dit was een proefronde. Je score is niet opgeslagen en er zijn geen lessen vrijgespeeld.':passed?'Je hebt de lesdoelen behaald. De volgende les is nu beschikbaar.':'Je hebt minimaal 80% nodig én beide spreekopdrachten moeten goed zijn. De volgende les blijft gesloten.'}</p>${!(window.SpeechRecognition||window.webkitSpeechRecognition)?'<p class="muted">Spreekvragen zijn hardop en schriftelijk geoefend. Uitspraak is niet automatisch beoordeeld.</p>':''}${answers.filter(a=>!a.good).length?`<h3>Extra aandacht voor</h3>${answers.filter(a=>!a.good).map(a=>`<span class="tag">${esc(a.expected)}</span>`).join('')}`:''}<p><button class="btn" onclick="current=null;tab='home';render();${wasPreview||passed?'':`start(${completedLesson});`}">${wasPreview||passed?'Terug naar overzicht':'Opnieuw oefenen'}</button></p></div>`;current=null}
+function next(){idx++;selection=null;spoken=false;questionMistakes=0;renderQuiz();window.scrollTo(0,0)}function finish(){let completedLesson=current;let wasPreview=previewLesson;previewLesson=false;let score=Math.round(answers.filter(a=>a.good).length/answers.length*100),speech=answers.filter(a=>a.type==='speak').every(a=>a.good),passed=score>=90&&speech;if(!wasPreview){state.attempts.push({lesson:current,lessonId:lessons[current].id,score,date:new Date().toLocaleDateString('nl-NL')});if(passed&&!state.passedIds.includes(lessons[current].id))state.passedIds.push(lessons[current].id);save();}app.innerHTML=`<div class="card"><div class="eyebrow">Toets afgerond</div><div class="big">${score}%</div><h2>${wasPreview?'Voorbeeldtoets afgerond':passed?'Les behaald!':'Nog even oefenen'}</h2><p>${wasPreview?'Dit was een proefronde. Je score is niet opgeslagen en er zijn geen lessen vrijgespeeld.':passed?'Je hebt de lesdoelen behaald. De volgende les is nu beschikbaar.':'Je hebt minimaal 90% zelfstandige beheersing nodig én beide spreekopdrachten moeten goed zijn. De volgende les blijft gesloten.'}</p>${!(window.SpeechRecognition||window.webkitSpeechRecognition)?'<p class="muted">Spreekvragen zijn hardop en schriftelijk geoefend. Uitspraak is niet automatisch beoordeeld.</p>':''}${answers.filter(a=>!a.good).length?`<h3>Extra aandacht voor</h3>${answers.filter(a=>!a.good).map(a=>`<span class="tag">${esc(a.expected)}</span>`).join('')}`:''}<p><button class="btn" onclick="current=null;tab='home';render();${wasPreview||passed?'':`start(${completedLesson});`}">${wasPreview||passed?'Terug naar overzicht':'Opnieuw oefenen'}</button></p></div>`;current=null}
 const oldRender=render;
 render=function(){
  try{
